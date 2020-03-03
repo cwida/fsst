@@ -98,7 +98,7 @@ SymbolTable *buildSymbolTable(Counters& counters, long sampleParam, vector<ulong
 
          if (sampleParam < 0 && i+1 == sample.size()) { 
             cur -= sampleParam; // use only last part of last line (which could be too long for an efficient sample)
-            if ((cur - end) > 500) end = cur + ((cur-end)*rnd128(i))/128; // shorten long lines to the sample fraction
+            if ((cur - end) > 500) end = cur + ((cur-end)*sampleFrac)/128; // shorten long lines to the sample fraction
          } else if (sampleFrac < 128) {
             // in earlier rounds (sampleFrac < 128) we skip data in the sample (reduces overall work ~2x)
             if (rnd128(i) > sampleFrac) continue;

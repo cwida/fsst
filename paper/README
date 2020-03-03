@@ -1,0 +1,10 @@
+dbtext/         our test corpus with database columns in text
+
+cw.cpp hcw.cpp: earlier versions of FSST
+
+filtertest.cpp: test program for LZ4 vs FSST that mimicks a table scan with a pusehd down filter
+linetest.cpp:   test program for LZ4 that tests fine-grained line-at-a-time LZ4 compression
+
+plots.R         R script to re-create the plots in the paper
+
+results/        place where the final results and figures can be found

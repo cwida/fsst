@@ -75,25 +75,3 @@ ggplot(aes(sel, value*1000, group=scheme), data=d) +
     theme(legend.position="none")
 ggsave(filename = 'results/filter.pdf', device = cairo_pdf, width=4, height=1.7)
 
-#### FSST vs LZ4 relative, DB not sole
-
-d = read.table('results/FSST-vs-LZ4.csv', header = TRUE)
-d = sqldf("
-select file, \"DB.crate\" as value, 'compression factor' as metric from d
-union all
-select file, \"DB.cMB.s\", 'compression speed' from d
-union all
-select file, \"dMB.s\", 'decompression speed' from d
-")
-ggplot(aes(file, value/100, fill=metric), data=d) +
-    geom_hline(yintercept=1, color = 'darkgrey') +
-    geom_bar(stat="identity", position = "dodge") +
-    ggtitle('FSST vs. LZ4 (database mode)') +
-    xlab('') +
-    ylab("← LZ4 better   rel. perf.   FSST better →   ") +
-    theme_bw(9) +
-    theme(plot.margin = unit(c(0.1,.1,0,.1), "cm")) +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    theme(legend.title = element_blank()) +
-    theme(legend.position = c(0.4, 0.77))
-ggsave(filename = 'results/fsstvslz4DB.pdf', device = cairo_pdf, width=8, height=3.2)

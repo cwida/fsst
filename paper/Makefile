@@ -11,6 +11,8 @@ cw-greedy: cw.cpp
 	g++ -std=c++17 -W -Wall -DGREEDY -ocw-greedy $(OPT) -g cw.cpp
 cw-strncmp: cw.cpp
 	g++ -std=c++17 -W -Wall -DSTRNCMP -ocw-strncmp $(OPT) -g cw.cpp
+vcw: vcw.cpp
+	g++ -std=c++17 -W -Wall -ovcw $(OPT) -g vcw.cpp
 hcw: hcw.cpp 
 	g++ -std=c++17 -W -Wall  $(OPT) -g -ohcw -DNONOPT_FSST -I.. ../libfsst.cpp hcw.cpp 
 hcw-opt: hcw.cpp ../libfsst.a 

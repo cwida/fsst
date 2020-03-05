@@ -29,7 +29,7 @@ ggplot(aes(file, value/100, fill=metric), data=d) +
     theme(axis.text.x = element_text(angle = 30, hjust = 1)) +
     theme(legend.title = element_blank()) +
 #    theme(legend.background = element_blank()) +
-    theme(legend.position = c(0.4, 0.79))
+    theme(legend.position = c(0.90, 0.85))
 ggsave(filename = 'results/fsstvslz4.pdf', device = cairo_pdf, width=8, height=3.1)
 
 #### FSST absolute

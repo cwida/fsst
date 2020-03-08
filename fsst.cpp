@@ -1,6 +1,6 @@
 // this software is distributed under the MIT License (http://www.opensource.org/licenses/MIT):
 //
-// Copyright 2018-2020, CWI, TU Munich, FSU Jena
+// Copyright 2018-2019, CWI, TU Munich, FSU Jena
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files
 // (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify,
@@ -95,7 +95,7 @@ void reader(ifstream& src) {
 void writer(ofstream& dst) {
    for(int swap=0; true; swap = 1-swap) {
       dstDoneCPU[swap].wait();
-      if (stopThreads) break;
+      if (!dstLen[swap]) break;
       dst.write((char*) dstBuf[swap], dstLen[swap]);
       dstDoneIO[swap].post();
    }
@@ -149,8 +149,11 @@ int main(int argc, char* argv[]) {
 
    for(int swap=0; true; swap = 1-swap) {
       srcDoneIO[swap].wait(); // wait until input buffer is available (i.e. done reading)
-      if (srcLen[swap] == 0) break;
       dstDoneIO[swap].wait(); // wait until output buffer is ready writing hence free for use
+      if (srcLen[swap] == 0) {
+         dstLen[swap] = 0;
+         break;
+      }
       if (decompress) {
           fsst_decoder_t decoder;
           unsigned long hdr = fsst_import(&decoder, srcBuf[swap]);
@@ -176,12 +179,12 @@ int main(int argc, char* argv[]) {
 
    // force wait until all background writes finished
    stopThreads = true;
-   dstDoneIO[0].wait();
-   dstDoneIO[1].wait();
    for(int swap=0; swap<2; swap++) {
       srcDoneCPU[swap].post();
       dstDoneCPU[swap].post();
    }
+   dstDoneIO[0].wait();
+   dstDoneIO[1].wait();
    readerThread.join();
    writerThread.join();
 }

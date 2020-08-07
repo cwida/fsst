@@ -27,7 +27,7 @@
  * FSST is a compression scheme focused on string/text data: it can compress strings from distributions with many different values (i.e.
  * where dictionary compression will not work well). It allows *random-access* to compressed data: it is not block-based, so individual
  * strings can be decompressed without touching the surrounding data in a compressed block. When compared to e.g. lz4 (which is 
- * block-based), FSST further achieves (2x) better decompression speed, (2x) better compression speed and 20% better compression ratio.
+ * block-based), FSST achieves similar decompression speed, (2x) better compression speed and 30% better compression ratio on text.
  *
  * FSST encodes strings also using a symbol table -- but it works on pieces of the string, as it maps "symbols" (1-8 byte sequences) 
  * onto "codes" (single-bytes). FSST can also represent a byte as an exception (255 followed by the original byte). Hence, compression 
@@ -149,7 +149,7 @@ fsst_decompress(
          code = strIn[posIn++]; *(unsigned long*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
       } else { 
          unsigned firstEscapePos=__builtin_ctzl(escapeMask)>>3;
-         switch(firstEscapePos) {
+         switch(firstEscapePos) { /* Duff's device */
          case 3: code = strIn[posIn++]; *(unsigned long*) (strOut+posOut) = symbol[code]; posOut += len[code]; FSST_FALLTHROUGH;
          case 2: code = strIn[posIn++]; *(unsigned long*) (strOut+posOut) = symbol[code]; posOut += len[code]; FSST_FALLTHROUGH;
          case 1: code = strIn[posIn++]; *(unsigned long*) (strOut+posOut) = symbol[code]; posOut += len[code]; FSST_FALLTHROUGH;

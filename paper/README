@@ -9,6 +9,10 @@ linetest.cpp:   test program for LZ4 that tests fine-grained line-at-a-time LZ4 
 
 results/        place where the final results and figures can be found
 
+lz4-smallblocks.sh
+		scripts that tests compression factor achieved by LZ4 on various blocksizes
+ 		(make sure you have lz4 --version 1.9.2 ahead in PATH)
+
 # to run all experiments in the paper:
 make experiments 
 

@@ -60,3 +60,6 @@ results/line.csv: results/perline.csv results/fullblock.csv
 	tail -1 results/perline.csv | awk '{printf"LZ4dict\t%f\t%f\t%f\n",$$9,$$8/1000,$$10/1000}' >> $@
 	tail -1 results/fullblock.csv | awk '{printf"LZ4\t%f\t%f\t%f\n",$$7,$$8/1000,$$11/1000}' >> $@
 	tail -1 results/fullblock.csv | awk '{printf"FSST\t%f\t%f\t%f\n",$$2,$$3/1000,$$6/1000}' >> $@
+
+results/lz4-smallblocks.csv: 
+	. ./lz4-smallblocks.sh dbtext/urls > $@

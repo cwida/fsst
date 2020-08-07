@@ -217,7 +217,7 @@ SymbolTable *buildSymbolTable(Counters& counters, long sampleParam, vector<ulong
    };
 
    u8 bestCounters[512*sizeof(u16)];
-#ifdef NONOPT_FSST
+#ifndef NONOPT_FSST
    for(ulong frac : {127, 127, 127, 127, 127, 127, 127, 127, 127, 128}) {
       sampleFrac = frac;
 #else

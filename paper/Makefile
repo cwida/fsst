@@ -2,9 +2,9 @@ SHELL := /bin/bash
 
 OPT=-O3 -march=native -DNDEBUG
 
-all: cw cw-greedy cw-strncmp hcw hcw-opt 
+all: cw vcw cw-greedy cw-strncmp hcw hcw-opt filtertest linetest
 clean:
-	-@rm -f filtertest fsst cw cw-greedy cw-strncmp hcw hcw-opt 
+	-@rm -f filtertest linetest cw cw-greedy cw-strncmp hcw hcw-opt 
 cw: cw.cpp
 	g++ -std=c++17 -W -Wall -ocw $(OPT) -g cw.cpp
 cw-greedy: cw.cpp
@@ -24,7 +24,7 @@ filtertest: filtertest.cpp ../libfsst.a
 linetest: linetest.cpp ../libfsst.a
 	g++ -std=c++17 -W -Wall -olinetest -Izstd -Lzstd -g $(OPT) linetest.cpp -llz4 -l:libzstd.so.1 -I.. -L.. -lfsst
 
-experiments: results/perline.csv results/fullblock.csv results/evolution.csv results/filter.csv results/line.csv results/FSST-vs-LZ4.csv results/kernels.tex
+experiments: results/perline.csv results/fullblock.csv results/evolution.csv results/filter.csv results/line.csv results/FSST-vs-LZ4.csv results/kernels.tex results/lz4-smallblocks.csv results/sorted.csv
 
 results/evolution.csv: cw cw-greedy cw-strncmp hcw hcw-opt linetest dbtext/*
 	@mkdir -p results
@@ -52,7 +52,7 @@ results/kernels.tex: filtertest dbtext/*
 	. ./kernels.sh > $@
 
 results/FSST-vs-LZ4.csv: results/fullblock.csv
-	awk '{if(k++)print $$1"\t"int($$2*100/$$7)"\t"int($$3*100/$$8)"\t"int($$4*100/$$9)"\t"int($$5*100/$$10)"\t"int($$6*100/$$11);else print "file\tsolo-crate\tsolo-cMB/s\tDB-crate\tDB-cMB/s\tdMB/s"}' results/fullblock.csv > $@
+	. ./compare.sh results/fullblock.csv > $@
 
 results/line.csv: results/perline.csv results/fullblock.csv
 	echo "" | awk '{ print "scheme\tcrate\tcMB/s\tdMB/s" }' > $@
@@ -63,3 +63,6 @@ results/line.csv: results/perline.csv results/fullblock.csv
 
 results/lz4-smallblocks.csv: 
 	. ./lz4-smallblocks.sh dbtext/urls > $@
+
+results/sorted.csv: 
+	. ./sorted.sh > $@

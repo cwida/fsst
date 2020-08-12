@@ -15,7 +15,7 @@
 // IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 // You can contact the authors via the FSST source repository : https://github.com/cwida/fsst
-
+//
                         // load new jobs in the empty lanes (initially, all lanes are empty, so loadmaskX=11111111, deltaX=8).
             jobX      = _mm512_mask_expandloadu_epi64(jobX, loadmaskX, input); input += deltaX; 
                         // load the next 8 input string bytes (uncompressed data, aka 'symbols').

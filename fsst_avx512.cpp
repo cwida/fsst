@@ -95,19 +95,19 @@ u32 fsst_compressAVX512(SymbolTable &symbolTable, u8* codeBase, u8* symbolBase, 
 
    if (unroll >= 4) {
       while (input+delta1+delta2+delta3+delta4 < inputEnd) {
-         #include ".fsst_avx512_unroll4.inc"
+         #include "fsst_avx512_unroll4.inc"
       }
    } else if (unroll == 3) {
       while (input+delta1+delta2+delta3 < inputEnd) {
-         #include ".fsst_avx512_unroll3.inc"
+         #include "fsst_avx512_unroll3.inc"
       }
    } else if (unroll == 2) {
       while (input+delta1+delta2 < inputEnd) {
-         #include ".fsst_avx512_unroll2.inc"
+         #include "fsst_avx512_unroll2.inc"
       }
    } else {
       while (input+delta1 < inputEnd) {
-         #include ".fsst_avx512_unroll1.inc"
+         #include "fsst_avx512_unroll1.inc"
       }
    }
 

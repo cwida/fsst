@@ -5,37 +5,6 @@ library(ggplot2)
 library(sqldf)
 library(Cairo)
 
-#### FSST vs LZ4 relative
-
-d = read.table('results/FSST-vs-LZ4.csv', header = TRUE)
-d = sqldf("
-select file, \"solo.crate\" as value, 'compression factor' as metric from d
-union all
-select file, \"solo.cMB.s\", 'compression speed' from d
-union all
-select file, \"dMB.s\", 'decompression speed' from d
-")
-d2 = read.table('results/fullblock.csv', header = TRUE)
-d2 = sqldf("select file, file||'\n('||round(\"FSST.brate\",2) ||' '|| round(\"FSST.bMB.s\"/1024,2) ||' '|| round(\"FSST.dMB.s\"/1024, 2)||')' as lbl from d2 file")
-d = sqldf("select d.file, value, metric, lbl as file2 from d join d2 on  d.file = d2.file")
-ggplot(aes(file, value/100, fill=metric), data=d) +
-    geom_hline(yintercept=1, color = 'darkgrey') +
-    geom_bar(stat="identity", position = "dodge") +
-#    ggtitle('FSST vs. LZ4 in file mode') +
-    xlab('') +
-    ylab("← LZ4 better   rel. perf.   FSST better →   ") +
-    theme_bw(10) +
-    theme(plot.margin = unit(c(0.1,.1,0,.1), "cm")) +
-    theme(axis.text.x = element_text(angle = 30, hjust = 1)) +
-    theme(legend.title = element_blank()) +
-#    theme(legend.background = element_blank()) +
-    theme(legend.position = c(0.90, 0.85))
-ggsave(filename = 'results/fsstvslz4.pdf', device = cairo_pdf, width=8, height=3.1)
-
-#### FSST absolute
-d = read.table('results/fullblock.csv', header = TRUE)
-d = sqldf("select file, round(\"FSST.brate\",2) as factor, round(\"FSST.bMB.s\"/1024,2) as cspeed, round(\"FSST.dMB.s\"/1024, 2) as dspeed from d order by file")
-
 #### line vs block
 
 d = read.table('results/line.csv', header = TRUE)

@@ -56,10 +56,9 @@ std::ostream& operator<<(std::ostream& out, const Symbol& s) {
    return out;
 }
 
-SymbolTable *buildSymbolTable(Counters& counters, long sampleParam, vector<ulong>& sample, ulong len[], u8* line[], bool zeroTerminated=false) {
-   ulong sampleSize = max(sampleParam, FSST_SAMPLEMAXSZ); // if sampleParam is negative, we need to ignore part of the last line
+SymbolTable *buildSymbolTable(Counters& counters, vector<u8*> line, ulong len[], bool zeroTerminated=false) {
    SymbolTable *st = new SymbolTable(), *bestTable = new SymbolTable();
-   long bestGain = -sampleSize; // worst case (everything exception)
+   long bestGain = -FSST_SAMPLEMAXSZ; // worst case (everything exception)
    ulong sampleFrac = 128;
 
    // start by determining the terminator. We use the (lowest) most infrequent byte as terminator 
@@ -69,11 +68,9 @@ SymbolTable *buildSymbolTable(Counters& counters, long sampleParam, vector<ulong
    } else {
       u16 byteHisto[256];
       memset(byteHisto, 0, sizeof(byteHisto));
-      for(ulong i=0; i<sample.size(); i++) {
-         u8* cur = line[sample[i]];
-         u8* end = cur + len[sample[i]];
-         if (sampleParam < 0 && i+1 == sample.size()) 
-            cur -= sampleSize; // use only last part of last line (which could be too long for an efficient sample)
+      for(ulong i=0; i<line.size(); i++) {
+         u8* cur = line[i];
+         u8* end = cur + len[i];
          while(cur < end) byteHisto[*cur++]++;
       }
       u32 minSize = FSST_SAMPLEMAXSZ, i = st->terminator = 256;
@@ -92,14 +89,11 @@ SymbolTable *buildSymbolTable(Counters& counters, long sampleParam, vector<ulong
    auto compressCount = [&](SymbolTable *st, Counters &counters) { // returns gain
       long gain = 0;
 
-      for(ulong i=0; i<sample.size(); i++) {
-         u8* cur = line[sample[i]];
-         u8* end = cur + len[sample[i]];
+      for(ulong i=0; i<line.size(); i++) {
+         u8* cur = line[i];
+         u8* end = cur + len[i];
 
-         if (sampleParam < 0 && i+1 == sample.size()) { 
-            cur -= sampleParam; // use only last part of last line (which could be too long for an efficient sample)
-            if ((cur - end) > 500) end = cur + ((cur-end)*sampleFrac)/128; // shorten long lines to the sample fraction
-         } else if (sampleFrac < 128) {
+         if (sampleFrac < 128) {
             // in earlier rounds (sampleFrac < 128) we skip data in the sample (reduces overall work ~2x)
             if (rnd128(i) > sampleFrac) continue;
          }
@@ -446,47 +440,54 @@ static inline ulong compressBulk(SymbolTable &symbolTable, ulong nlines, ulong l
    return curLine;
 }
 
+#define FSST_SAMPLELINE 512UL 
+
 // quickly select a uniformly random set of lines such that we have between [FSST_SAMPLETARGET,FSST_SAMPLEMAXSZ) string bytes
-long makeSample(vector<ulong> &sample, ulong nlines, ulong len[]) {
-   ulong i, sampleRnd = 1, sampleProb = 256, sampleSize = 0, totSize = 0;
-   ulong sampleTarget = FSST_SAMPLETARGET;
+vector<u8*> makeSample(u8* sampleBuf, u8* strIn[], ulong **lenRef, ulong nlines) {
+   ulong totSize = 0, *lenIn = *lenRef;
+   vector<u8*> sample;
 
-   for(i=0; i<nlines; i++) 
-      totSize += len[i];
+   for(ulong i=0; i<nlines; i++) 
+      totSize += lenIn[i];
 
-   if (totSize > FSST_SAMPLETARGET) {
-      // if the batch is larger than the sampletarget, sample this fraction  
-      sampleProb = max(((ulong) 4),(256*sampleTarget) / totSize);
+   if (totSize < FSST_SAMPLETARGET) { 
+      for(ulong i=0; i<nlines; i++) 
+         sample.push_back(strIn[i]);
    } else {
-      // too little data. But ok, do not include lines multiple times, just use everything once
-      sampleTarget = totSize; // sampleProb will be 256/256 (aka 100%) 
-   } 
-   do {
-      // if nlines is very large and strings are small (8, so we need 4K lines), we still expect 4K*256/4 iterations total worst case
-      for(i=0; i<nlines; i++) { 
-         // cheaply draw a random number to select (or not) each line
-         sampleRnd = FSST_HASH(sampleRnd);
-         if ((sampleRnd&255) < sampleProb) {
-            sample.push_back(i);
-            sampleSize += len[i];
-            if (sampleSize >= sampleTarget) // enough? 
-               i = nlines; // break out of both loops; 
-         }
-      }
-      sampleProb *= 4; //accelerate the selection process at expense of front-bias (4,16,64,256: 4 passes max)
-   } while(i <= nlines); // basically continue until we have enough
+      ulong sampleRnd = FSST_HASH(4637947);
+      u8* sampleLim = sampleBuf + FSST_SAMPLETARGET;
+      ulong *sampleLen = *lenRef = new ulong[nlines + FSST_SAMPLEMAXSZ/FSST_SAMPLELINE];
 
-   // if the last line (only line?) is excessively long, return a negative samplesize (the amount of front bytes to skip)
-   long sampleLong = (long) sampleSize;
-   assert(sampleLong > 0);
-   return (sampleLong < FSST_SAMPLEMAXSZ)?sampleLong:FSST_SAMPLEMAXSZ-sampleLong; 
+      while(sampleBuf < sampleLim) {
+         // choose a non-empty line
+         sampleRnd = FSST_HASH(sampleRnd);
+         ulong linenr = sampleRnd % nlines;
+         while (lenIn[linenr] == 0) 
+            if (++linenr == nlines) linenr = 0;
+
+         // choose a chunk
+         ulong chunks = 1 + ((lenIn[linenr]-1) / FSST_SAMPLELINE);
+         sampleRnd = FSST_HASH(sampleRnd);
+         ulong chunk = FSST_SAMPLELINE*(sampleRnd % chunks);
+
+         // add the chunk to the sample
+         ulong len = min(lenIn[linenr]-chunk,FSST_SAMPLELINE);
+         memcpy(sampleBuf, strIn[linenr]+chunk, len);
+         sample.push_back(sampleBuf);
+         sampleBuf += *sampleLen++ = len;
+      }
+   }
+   return sample;
 }
 
 extern "C" fsst_encoder_t* fsst_create(ulong n, ulong lenIn[], u8 *strIn[], int zeroTerminated) {
-   vector<ulong> sample;
-   long sampleSize = makeSample(sample, n?n:1, lenIn); // careful handling of input to get a right-size and representative sample
+   u8* sampleBuf = new u8[FSST_SAMPLEMAXSZ];
+   ulong *sampleLen = lenIn;
+   vector<u8*> sample = makeSample(sampleBuf, strIn, &sampleLen, n?n:1); // careful handling of input to get a right-size and representative sample
    Encoder *encoder = new Encoder();
-   encoder->symbolTable = shared_ptr<SymbolTable>(buildSymbolTable(encoder->counters, sampleSize, sample, lenIn, strIn, zeroTerminated));
+   encoder->symbolTable = shared_ptr<SymbolTable>(buildSymbolTable(encoder->counters, sample, sampleLen, zeroTerminated));
+   if (sampleLen != lenIn) delete[] sampleLen; 
+   delete[] sampleBuf; 
    return (fsst_encoder_t*) encoder;
 }
 

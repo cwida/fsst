@@ -1,5 +1,7 @@
 dbtext/         a new compression test corpus, consisting of various textual database columns
 
+===========	various tools and scripts for the replication of the results in the paper
+===========	will run only on Linux really, and needs CPU counters
 cw.cpp 
 vcw.cpp
 hcw.cpp:        earlier versions of FSST
@@ -9,9 +11,21 @@ linetest.cpp:   test program for LZ4 that tests fine-grained line-at-a-time LZ4 
 
 results/        place where the final results and figures can be found
 
+compare.sh  
+		postprocessing to get Table1 from the paper
+
+evolution.sh  
+		comparison of various FSST versions (above) 
+
+kernels.sh  
+		comparison of various FSST encoding kernels 
+
 lz4-smallblocks.sh
 		scripts that tests compression factor achieved by LZ4 on various blocksizes
- 		(make sure you have lz4 --version 1.9.2 ahead in PATH)
+ 		(make sure you have lz4 --version 1.8.1 ahead in PATH)
+
+sorted.sh
+		comparison FSST vs LZ4 in compression factors when dbtext files are sorted
 
 # to run all experiments in the paper:
 make experiments 

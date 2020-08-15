@@ -28,15 +28,12 @@
 #include <vector>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/mman.h>
 #include <fcntl.h>
+#include <stddef.h>
 
 using namespace std;
 
 #include "fsst.h" // the official FSST API -- also usable by C mortals
-
-/* workhorse type for string and buffer lengths: 64-bits on 64-bits platforms and 32-bits on 32-bits platforms */
-typedef unsigned long ulong; 
 
 /* unsigned integers */
 typedef uint8_t u8;
@@ -55,9 +52,9 @@ typedef uint64_t u64;
 // we represent codes in u16 (not u8). 12 bits code (of which 10 are used), 4 bits length
 #define FSST_LEN_BITS       12
 #define FSST_CODE_BITS      9 
-#define FSST_CODE_BASE      256 /* first 256 codes [0,255] are pseudo codes: escaped bytes */
-#define FSST_CODE_MAX       (1LL<<FSST_CODE_BITS) /* all bits set: indicating a symbol that has not been assigned a code yet */
-#define FSST_CODE_MASK      (FSST_CODE_MAX-1)/* all bits set: indicating a symbol that has not been assigned a code yet */
+#define FSST_CODE_BASE      256UL /* first 256 codes [0,255] are pseudo codes: escaped bytes */
+#define FSST_CODE_MAX       (1UL<<FSST_CODE_BITS) /* all bits set: indicating a symbol that has not been assigned a code yet */
+#define FSST_CODE_MASK      (FSST_CODE_MAX-1UL)   /* all bits set: indicating a symbol that has not been assigned a code yet */
 
 struct Symbol {
    static const unsigned maxLength = 8;
@@ -68,11 +65,11 @@ struct Symbol {
    // icl = u64 ignoredBits:16,code:12,length:4,unused:32 -- but we avoid exposing this bit-field notation
    u64 icl;  // use a single u64 to be sure "code" is accessed with one load and can be compared with one comparison
 
-   Symbol() : icl(0) {}
+   Symbol() : icl(0) { val.num = 0; }
 
    explicit Symbol(u8 c, u16 code) : icl((1<<28)|(code<<16)|56) { val.num = c; } // single-char symbol
-   explicit Symbol(const char* begin, const char* end) : Symbol(begin, end-begin) {}
-   explicit Symbol(u8* begin, u8* end) : Symbol((const char*)begin, end-begin) {}
+   explicit Symbol(const char* begin, const char* end) : Symbol(begin, (u32) (end-begin)) {}
+   explicit Symbol(u8* begin, u8* end) : Symbol((const char*)begin, (u32) (end-begin)) {}
    explicit Symbol(const char* input, u32 len) {
       u8 ignoredBits = 0;
       if (len>=8) {
@@ -95,9 +92,9 @@ struct Symbol {
    }
    void set_code_len(u32 code, u32 len) { icl = (len<<28)|(code<<16)|((8-len)*8); }
 
-   u8 length() const { return icl >> 28; }
+   u32 length() const { return (u32) (icl >> 28); }
    u16 code() const { return (icl >> 16) & FSST_CODE_MASK; }
-   u8 ignoredBits() const { return icl; }
+   u32 ignoredBits() const { return (u32) icl; }
 
    u8 first() const { assert( length() >= 1); return 0xFF & val.num; }
    u16 first2() const { assert( length() >= 2); return 0xFFFF & val.num; }
@@ -106,7 +103,7 @@ struct Symbol {
 #define FSST_HASH_PRIME 2971215073LL
 #define FSST_SHIFT 15
 #define FSST_HASH(w) (((w)*FSST_HASH_PRIME)^(((w)*FSST_HASH_PRIME)>>FSST_SHIFT))
-   ulong hash() const { ulong v = 0xFFFFFF & val.num; return FSST_HASH(v); } // hash on the next 3 bytes
+   size_t hash() const { size_t v = 0xFFFFFF & val.num; return FSST_HASH(v); } // hash on the next 3 bytes
 };
 
 // Symbol that can be put in a queue, ordered on gain
@@ -165,8 +162,8 @@ struct SymbolTable {
    // replicate long symbols in hashTab (avoid indirection). 
    Symbol hashTab[hashTabSize]; // used for all symbols of 3 and more bytes
 
-   u32 nSymbols;       // amount of symbols in the map (max 255)
-   u32 suffixLim;         // codes higher than this do not have a longer suffix
+   u16 nSymbols;          // amount of symbols in the map (max 255)
+   u16 suffixLim;         // codes higher than this do not have a longer suffix
    u16 terminator;        // code of 1-byte symbol, that can be used as a terminator during compression
    bool zeroTerminated;   // whether we are expecting zero-terminated strings (we then also produce zero-terminated compressed strings)
    u16 lenHisto[FSST_CODE_BITS]; // lenHisto[x] is the amount of symbols of byte-length (x+1) in this SymbolTable
@@ -241,7 +238,7 @@ struct SymbolTable {
    }
    /// Find longest expansion, return code (= position in symbol table)
    u16 findLongestSymbol(Symbol s) const {
-      ulong idx = s.hash() & (hashTabSize-1);
+      size_t idx = s.hash() & (hashTabSize-1);
       if (hashTab[idx].icl <= s.icl && hashTab[idx].val.num == (s.val.num & (0xFFFFFFFFFFFFFFFF >> ((u8) hashTab[idx].icl)))) {
          return (hashTab[idx].icl>>16) & FSST_CODE_MASK; // matched a long symbol 
       }
@@ -388,28 +385,28 @@ struct Counters {
       // read 16-bits single symbol counter, split into two 8-bits numbers (count1Low, count1High), while skipping over zeros
       u64 high = *(u64*) &count1High[pos1]; // note: this reads 8 subsequent counters [pos1..pos1+7]
 
-      u32 zero = high?(__builtin_ctzl(high)>>3):7; // number of zero bytes
+      u32 zero = high?(__builtin_ctzl(high)>>3):7UL; // number of zero bytes
       high = (high >> (zero << 3)) & 255; // advance to nonzero counter
       if (((pos1 += zero) >= FSST_CODE_MAX) || !high) // SKIP! advance pos2
          return 0; // all zero
 
-      u64 low = count1Low[pos1];
+      u32 low = count1Low[pos1];
       if (low) high--; // high is incremented early and low late, so decrement high (unless low==0)
-      return (high << 8) + low;
+      return (u32) ((high << 8) + low);
    }
    u32 count2GetNext(u32 pos1, u32 &pos2) { // note: we will advance pos2 to the next nonzero counter in register range
       // read 12-bits pairwise symbol counter, split into low 8-bits and high 4-bits number while skipping over zeros
       u64 high = *(u64*) &count2High[pos1][pos2>>1]; // note: this reads 16 subsequent counters [pos2..pos2+15]
-      high >>= (pos2&1) << 2; // odd pos2: ignore the lowest 4 bits & we see only 15 counters
+      high >>= ((pos2&1) << 2); // odd pos2: ignore the lowest 4 bits & we see only 15 counters
 
-      u32 zero = high?(__builtin_ctzl(high)>>2):(15-(pos2&1)); // number of zero 4-bits counters
+      u32 zero = high?(__builtin_ctzl(high)>>2):(15UL-(pos2&1UL)); // number of zero 4-bits counters
       high = (high >> (zero << 2)) & 15;  // advance to nonzero counter
       if (((pos2 += zero) >= FSST_CODE_MAX) || !high) // SKIP! advance pos2
-         return 0; // all zero
+         return 0UL; // all zero
 
-      u64 low = count2Low[pos1][pos2];
+      u32 low = count2Low[pos1][pos2];
       if (low) high--; // high is incremented early and low late, so decrement high (unless low==0)
-      return (high << 8) + low;
+      return (u32) ((high << 8) + low);
    }
    void backup1(u8 *buf) {
       memcpy(buf, count1High, FSST_CODE_MAX);
@@ -442,16 +439,16 @@ struct SIMDjob {
 extern bool 
 fsst_hasAVX512(); // runtime check for avx512 capability
 
-extern u32 
+extern size_t 
 fsst_compressAVX512(
    SymbolTable &symbolTable, 
    u8* codeBase,    // IN: base address for codes, i.e. compression output (points to simdbuf+256KB)
    u8* symbolBase,  // IN: base address for string bytes, i.e. compression input (points to simdbuf)
    SIMDjob* input,  // IN: input array (size n) with job information: what to encode, where to store it.
    SIMDjob* output, // OUT: output array (size n) with job information: how much got encoded, end output pointer.
-   u32 n,           // IN: size of arrays input and output (should be max 512)
-   u32 unroll);     // IN: degree of SIMD unrolling
+   size_t n,         // IN: size of arrays input and output (should be max 512)
+   size_t unroll);   // IN: degree of SIMD unrolling
 
 // C++ fsst-compress function with some more control of how the compression happens (algorithm flavor, simd unroll degree)
-ulong compressImpl(Encoder *encoder, ulong n, ulong lenIn[], u8 *strIn[], ulong size, u8 * output, ulong *lenOut, u8 *strOut[], bool noSuffixOpt, bool avoidBranch, int simd);
-ulong compressAuto(Encoder *encoder, ulong n, ulong lenIn[], u8 *strIn[], ulong size, u8 * output, ulong *lenOut, u8 *strOut[], int simd);
+size_t compressImpl(Encoder *encoder, size_t n, size_t lenIn[], u8 *strIn[], size_t size, u8 * output, size_t *lenOut, u8 *strOut[], bool noSuffixOpt, bool avoidBranch, int simd);
+size_t compressAuto(Encoder *encoder, size_t n, size_t lenIn[], u8 *strIn[], size_t size, u8 * output, size_t *lenOut, u8 *strOut[], int simd);

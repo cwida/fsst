@@ -48,12 +48,26 @@
 #ifndef _FSST_H_
 #define _FSST_H_
 
+#ifdef _MSC_VER
+#define __restrict__ 
+#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
+#define __ORDER_LITTLE_ENDIAN__ 2
+#include <intrin.h>
+static inline int __builtin_ctzl(unsigned long long x) {
+    unsigned long ret;
+    _BitScanForward64(&ret, x);
+    return (int)ret;
+}
+#endif
+
 #ifdef __cplusplus
 #define FSST_FALLTHROUGH [[fallthrough]]
 extern "C" {
 #else
 #define FSST_FALLTHROUGH 
 #endif
+
+#include <stddef.h>
 
 /* A compressed string is simply a string of 1-byte codes; except for code 255, which is followed by an uncompressed byte. */
 #define FSST_ESC 255
@@ -72,8 +86,8 @@ typedef struct {
 /* Calibrate a FSST symboltable from a batch of strings (it is best to provide at least 16KB of data). */
 fsst_encoder_t*  
 fsst_create(
-   unsigned long n,         /* IN: number of strings in batch to sample from. */
-   unsigned long lenIn[],   /* IN: byte-lengths of the inputs */
+   size_t n,         /* IN: number of strings in batch to sample from. */
+   size_t lenIn[],   /* IN: byte-lengths of the inputs */
    unsigned char *strIn[],  /* IN: string start pointers. */
    int zeroTerminated       /* IN: whether input strings are zero-terminated. If so, encoded strings are as well (i.e. symbol[0]=""). */
 );
@@ -81,7 +95,7 @@ fsst_create(
 /* Create another encoder instance, necessary to do multi-threaded encoding using the same symbol table. */ 
 fsst_encoder_t*    
 fsst_duplicate(
-   fsst_encoder_t *encoder   /* IN: the symbol table to duplicate. */ 
+   fsst_encoder_t *encoder  /* IN: the symbol table to duplicate. */ 
 );
 
 #define FSST_MAXHEADER (8+1+8+2048+1) /* maxlen of deserialized fsst header, produced/consumed by fsst_export() resp. fsst_import() */
@@ -89,7 +103,7 @@ fsst_duplicate(
 /* Space-efficient symbol table serialization (smaller than sizeof(fsst_decoder_t) - by saving on the unused bytes in symbols of len < 8). */
 unsigned int                /* OUT: number of bytes written in buf, at most sizeof(fsst_decoder_t) */
 fsst_export(
-   fsst_encoder_t *encoder,  /* IN: the symbol table to dump. */ 
+   fsst_encoder_t *encoder, /* IN: the symbol table to dump. */ 
    unsigned char *buf       /* OUT: pointer to a byte-buffer where to serialize this symbol table. */
 ); 
 
@@ -100,7 +114,7 @@ fsst_destroy(fsst_encoder_t*);
 /* Return a decoder structure from serialized format (typically used in a block-, file- or row-group header). */
 unsigned int                /* OUT: number of bytes consumed in buf (0 on failure). */
 fsst_import(
-   fsst_decoder_t *decoder,  /* IN: this symbol table will be overwritten. */ 
+   fsst_decoder_t *decoder, /* IN: this symbol table will be overwritten. */ 
    unsigned char *buf       /* OUT: pointer to a byte-buffer where fsst_export() serialized this symbol table. */
 ); 
 
@@ -112,47 +126,47 @@ fsst_decoder(
 
 /* Compress a batch of strings (on AVX512 machines best performance is obtained by compressing more than 32KB of string volume). */
 /* The output buffer must be large; at least "conservative space" (7+2*inputlength) for the first string for something to happen. */
-unsigned long               /* OUT: the number of compressed strings (<=n) that fit the output buffer. */ 
+size_t                      /* OUT: the number of compressed strings (<=n) that fit the output buffer. */ 
 fsst_compress(
-   fsst_encoder_t *encoder,  /* IN: encoder obtained from fsst_create(). */
-   unsigned long nstrings,  /* IN: number of strings in batch to compress. */
-   unsigned long lenIn[],   /* IN: byte-lengths of the inputs */
+   fsst_encoder_t *encoder, /* IN: encoder obtained from fsst_create(). */
+   size_t nstrings,         /* IN: number of strings in batch to compress. */
+   size_t lenIn[],          /* IN: byte-lengths of the inputs */
    unsigned char *strIn[],  /* IN: input string start pointers. */
-   unsigned long outsize,   /* IN: byte-length of output buffer. */
+   size_t outsize,          /* IN: byte-length of output buffer. */
    unsigned char *output,   /* OUT: memory buffer to put the compressed strings in (one after the other). */
-   unsigned long lenOut[],   /* OUT: byte-lengths of the compressed strings. */
+   size_t lenOut[],         /* OUT: byte-lengths of the compressed strings. */
    unsigned char *strOut[]  /* OUT: output string start pointers. Will all point into [output,output+size). */
 );
 
 /* Decompress a single string, inlined for speed. */
-inline unsigned long        /* OUT: bytesize of the decompressed string. If > size, the decoded output is truncated to size. */
+inline size_t /* OUT: bytesize of the decompressed string. If > size, the decoded output is truncated to size. */
 fsst_decompress(
    fsst_decoder_t *decoder,  /* IN: use this symbol table for compression. */
-   unsigned long lenIn,     /* IN: byte-length of compressed string. */
-   unsigned char *strIn,    /* IN: compressed string. */
-   unsigned long size,      /* IN: byte-length of output buffer. */
-   unsigned char *output    /* OUT: memory buffer to put the decompressed string in. */
+   size_t lenIn,             /* IN: byte-length of compressed string. */
+   unsigned char *strIn,     /* IN: compressed string. */
+   size_t size,              /* IN: byte-length of output buffer. */
+   unsigned char *output     /* OUT: memory buffer to put the decompressed string in. */
 ) {
    unsigned char*__restrict__ len = (unsigned char* __restrict__) decoder->len;
-   unsigned long*__restrict__ symbol = (unsigned long* __restrict__) decoder->symbol; 
    unsigned char*__restrict__ strOut = (unsigned char* __restrict__) output;
-   unsigned long code, posOut = 0, posIn = 0;
+   unsigned long long*__restrict__ symbol = (unsigned long long* __restrict__) decoder->symbol; 
+   size_t code, posOut = 0, posIn = 0;
 #ifndef FSST_MUST_ALIGN_STORES /* define this if your platform does not allow unaligned memory access */
 #if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
    while (posOut+32 <= size && posIn+4 <= lenIn) {
       unsigned int nextBlock = *((unsigned int*) (strIn+posIn));
       unsigned int escapeMask = (nextBlock&0x80808080u)&((((~nextBlock)&0x7F7F7F7Fu)+0x7F7F7F7Fu)^0x80808080u);
       if (escapeMask == 0) {
-         code = strIn[posIn++]; *(unsigned long*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
-         code = strIn[posIn++]; *(unsigned long*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
-         code = strIn[posIn++]; *(unsigned long*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
-         code = strIn[posIn++]; *(unsigned long*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
+         code = strIn[posIn++]; *(unsigned long long*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
+         code = strIn[posIn++]; *(unsigned long long*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
+         code = strIn[posIn++]; *(unsigned long long*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
+         code = strIn[posIn++]; *(unsigned long long*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
       } else { 
-         unsigned firstEscapePos=__builtin_ctzl(escapeMask)>>3;
+         unsigned long firstEscapePos=__builtin_ctzl((unsigned long long) escapeMask)>>3;
          switch(firstEscapePos) { /* Duff's device */
-         case 3: code = strIn[posIn++]; *(unsigned long*) (strOut+posOut) = symbol[code]; posOut += len[code]; FSST_FALLTHROUGH;
-         case 2: code = strIn[posIn++]; *(unsigned long*) (strOut+posOut) = symbol[code]; posOut += len[code]; FSST_FALLTHROUGH;
-         case 1: code = strIn[posIn++]; *(unsigned long*) (strOut+posOut) = symbol[code]; posOut += len[code]; FSST_FALLTHROUGH;
+         case 3: code = strIn[posIn++]; *(unsigned long long*) (strOut+posOut) = symbol[code]; posOut += len[code]; FSST_FALLTHROUGH;
+         case 2: code = strIn[posIn++]; *(unsigned long long*) (strOut+posOut) = symbol[code]; posOut += len[code]; FSST_FALLTHROUGH;
+         case 1: code = strIn[posIn++]; *(unsigned long long*) (strOut+posOut) = symbol[code]; posOut += len[code]; FSST_FALLTHROUGH;
          case 0: posIn+=2; strOut[posOut++] = strIn[posIn-1]; /* decompress an escaped byte */
          }
       }
@@ -161,9 +175,9 @@ fsst_decompress(
       if (posIn+2 <= lenIn) { 
 	 strOut[posOut] = strIn[posIn+1]; 
          if (strIn[posIn] != FSST_ESC) {
-            code = strIn[posIn++]; *(unsigned long*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
+            code = strIn[posIn++]; *(unsigned long long*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
             if (strIn[posIn] != FSST_ESC) {
-               code = strIn[posIn++]; *(unsigned long*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
+               code = strIn[posIn++]; *(unsigned long long*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
             } else { 
                posIn += 2; strOut[posOut++] = strIn[posIn-1]; 
             }
@@ -172,13 +186,13 @@ fsst_decompress(
          } 
       }
       if (posIn < lenIn) { // last code cannot be an escape
-         code = strIn[posIn++]; *(unsigned long*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
+         code = strIn[posIn++]; *(unsigned long long*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
       }
    }
 #else
    while (posOut+8 <= size && posIn < lenIn)
       if ((code = strIn[posIn++]) < FSST_ESC) { /* symbol compressed as code? */
-         *(unsigned long*) (strOut+posOut) = symbol[code]; /* unaligned memory write */
+         *(unsigned long long*) (strOut+posOut) = symbol[code]; /* unaligned memory write */
          posOut += len[code];
       } else { 
          strOut[posOut] = strIn[posIn]; /* decompress an escaped byte */
@@ -188,7 +202,7 @@ fsst_decompress(
 #endif
    while (posIn < lenIn)
       if ((code = strIn[posIn++]) < FSST_ESC) {
-         unsigned long posWrite = posOut, endWrite = posOut + len[code];
+         size_t posWrite = posOut, endWrite = posOut + len[code];
          unsigned char* __restrict__ symbolPointer = ((unsigned char* __restrict__) &symbol[code]) - posWrite;
          if ((posOut = endWrite) > size) endWrite = size;
          for(; posWrite < endWrite; posWrite++)  /* only write if there is room */

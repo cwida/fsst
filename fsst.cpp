@@ -64,14 +64,14 @@ BinarySemaphore srcDoneIO[2], dstDoneIO[2], srcDoneCPU[2], dstDoneCPU[2];
 unsigned char *srcBuf[2] = { NULL, NULL };
 unsigned char *dstBuf[2] = { NULL, NULL };
 unsigned char *dstMem[2] = { NULL, NULL };
-unsigned long srcLen[2] = { 0, 0 };
-unsigned long dstLen[2] = { 0, 0 };
+size_t srcLen[2] = { 0, 0 };
+size_t dstLen[2] = { 0, 0 };
 
-#define FSST_MEMBUF (1<<22)
+#define FSST_MEMBUF (1ULL<<22)
 int decompress = 0;
-unsigned long blksz = FSST_MEMBUF-(1+FSST_MAXHEADER/2); // block size of compression (max compressed size must fit 3 bytes)
+size_t blksz = FSST_MEMBUF-(1+FSST_MAXHEADER/2); // block size of compression (max compressed size must fit 3 bytes)
 
-#define DESERIALIZE(p) (((unsigned long) (p)[0]) << 16) | (((unsigned long) (p)[1]) << 8) | ((unsigned long) (p)[2])
+#define DESERIALIZE(p) (((unsigned long long) (p)[0]) << 16) | (((unsigned long long) (p)[1]) << 8) | ((unsigned long long) (p)[2])
 #define SERIALIZE(l,p) { (p)[0] = ((l)>>16)&255; (p)[1] = ((l)>>8)&255; (p)[2] = (l)&255; }
 
 void reader(ifstream& src) {
@@ -79,7 +79,7 @@ void reader(ifstream& src) {
       srcDoneCPU[swap].wait();
       if (stopThreads) break;
       src.read((char*) srcBuf[swap], blksz);
-      srcLen[swap] = src.gcount();
+      srcLen[swap] = (unsigned long) src.gcount();
       if (decompress) {
          if (blksz && srcLen[swap] == blksz) {
             blksz = DESERIALIZE(srcBuf[swap]+blksz-3); // read size of next block
@@ -106,7 +106,7 @@ void writer(ofstream& dst) {
 }
 
 int main(int argc, char* argv[]) {
-   long srcTot = 0, dstTot = 0;
+   size_t srcTot = 0, dstTot = 0;
    if (argc < 2 || argc > 4 || (argc == 4 && (argv[1][0] != '-' || argv[1][1] != 'd' || argv[1][2]))) {
       cerr << "usage: " << argv[0] << " -d infile outfile" << endl;
       cerr << "       " << argv[0] << " infile outfile" << endl;
@@ -120,8 +120,10 @@ int main(int argc, char* argv[]) {
    } else {
       dstfile = argv[2+decompress];
    }
-   ifstream src(srcfile, ifstream::in);
-   ofstream dst(dstfile, ofstream::out);
+   ifstream src;
+   ofstream dst;
+   src.open(srcfile, ios::binary);
+   dst.open(dstfile, ios::binary);
    dst.exceptions(ios_base::failbit);
    dst.exceptions(ios_base::badbit);
    src.exceptions(ios_base::badbit);
@@ -136,9 +138,9 @@ int main(int argc, char* argv[]) {
    }
    vector<unsigned char> buffer(FSST_MEMBUF*6);
    srcBuf[0] = buffer.data();
-   srcBuf[1] = srcBuf[0] + (FSST_MEMBUF*(1+decompress));
-   dstMem[0] = srcBuf[1] + (FSST_MEMBUF*(1+decompress));
-   dstMem[1] = dstMem[0] + (FSST_MEMBUF*(2-decompress));
+   srcBuf[1] = srcBuf[0] + (FSST_MEMBUF*(1ULL+decompress));
+   dstMem[0] = srcBuf[1] + (FSST_MEMBUF*(1ULL+decompress));
+   dstMem[1] = dstMem[0] + (FSST_MEMBUF*(2ULL-decompress));
 
    for(int swap=0; swap<2; swap++) {
       srcDoneCPU[swap].post(); // input buffer is not being processed initially
@@ -156,12 +158,12 @@ int main(int argc, char* argv[]) {
       }
       if (decompress) {
           fsst_decoder_t decoder;
-          unsigned long hdr = fsst_import(&decoder, srcBuf[swap]);
+          size_t hdr = fsst_import(&decoder, srcBuf[swap]);
           dstLen[swap] = fsst_decompress(&decoder, srcLen[swap] - hdr, srcBuf[swap] + hdr, FSST_MEMBUF, dstBuf[swap] = dstMem[swap]);
       } else {
           unsigned char tmp[FSST_MAXHEADER];
           fsst_encoder_t *encoder = fsst_create(1, &srcLen[swap], &srcBuf[swap], 0);
-          unsigned long hdr = fsst_export(encoder, tmp);
+          size_t hdr = fsst_export(encoder, tmp);
           if (fsst_compress(encoder, 1, &srcLen[swap], &srcBuf[swap], FSST_MEMBUF*2, dstMem[swap]+FSST_MAXHEADER+3,
                                        &dstLen[swap], &dstBuf[swap]) < 1) return -1;
           dstLen[swap] += 3 + hdr;

@@ -6,10 +6,10 @@ Authors:
 - Viktor Leis (FSU Jena)
 - Thomas Neumann (TU Munchen)
 
-You can contact the authors via the FSST source repository : https://github.com/cwida/fsst
+You can contact the authors via the issues of this FSST source repository : https://github.com/cwida/fsst
 
 FSST: Fast Static Symbol Table compression
-see the paper https://github.com/cwida/fsst/raw/master/fsstcompression.pdf
+see the PVLDB paper https://github.com/cwida/fsst/raw/master/fsstcompression.pdf
 
 FSST is a compression scheme focused on string/text data: it can compress strings from distributions with many different values (i.e. where dictionary compression will not work well). It allows *random-access* to compressed data: it is not block-based, so individual strings can be decompressed without touching the surrounding data in a compressed block. When compared to e.g. LZ4 (which is block-based), FSST further achieves similar decompression speed and compression speed, and better compression ratio.
 
@@ -18,3 +18,7 @@ FSST encodes strings using a symbol table -- but it works on pieces of the strin
 FSST ensures that strings that are equal, are also equal in their compressed form. This means equality comparisons can be performed without decompressing the strings.
 
 FSST compression is quite useful in database systems and data file formats. It e.g., allows fine-grained decompression of values in case of selection predicates that are pushed down into a scan operator. But, very often FSST even allows to postpone decompression of string data. This means hash tables (in joins and aggregations) become smaller, and network communication (in case of distributed query processing) is reduced. All of this without requiring much structural changes to existing systems: after all, FSST compressed strings still remain strings.
+
+The implementation of FSST is quite portable, using CMake and has been verified to work on 64-bits x86 computers running Linux, MacOS and Windows.
+
+[![Watch the video](https://github.com/cwida/fsst/raw/master/fsst-presentation.png)](https://github.com/cwida/fsst/raw/master/fsst-presentation.mp4)

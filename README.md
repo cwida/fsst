@@ -1,6 +1,8 @@
 # FSST
 Fast Static Symbol Table (FSST): fast text compression that allows random access 
 
+[![Watch the video](https://github.com/cwida/fsst/raw/master/fsst-presentation.png)](https://github.com/cwida/fsst/raw/master/fsst-presentation.mp4)
+
 Authors:
 - Peter Boncz (CWI)
 - Viktor Leis (FSU Jena)
@@ -21,4 +23,3 @@ FSST compression is quite useful in database systems and data file formats. It e
 
 The implementation of FSST is quite portable, using CMake and has been verified to work on 64-bits x86 computers running Linux, MacOS and Windows.
 
-[![Watch the video](https://github.com/cwida/fsst/raw/master/fsst-presentation.png)](https://github.com/cwida/fsst/raw/master/fsst-presentation.mp4)

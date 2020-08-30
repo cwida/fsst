@@ -429,13 +429,13 @@ static inline size_t compressBulk(SymbolTable &symbolTable, size_t nlines, size_
          } 
          end = cur + chunk; 
          // based on symboltable stats, choose a variant that is nice to the branch predictor
-//         if (noSuffixOpt) {
-//            compressVariant(true,false);
-//         } else if (avoidBranch) {
-//            compressVariant(false,true);
-//         } else {
-            compressVariant(false, false);
-//         }
+         if (noSuffixOpt) {
+            compressVariant(true,false);
+         } else if (avoidBranch) {
+            compressVariant(false,true);
+         } else {
+          compressVariant(false, false);
+         }
       } while((curOff += chunk) < lenIn[curLine]);
       lenOut[curLine] = (size_t) (out - strOut[curLine]);
    } 

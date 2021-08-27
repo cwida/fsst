@@ -263,6 +263,6 @@ struct BenchmarkParameters {
 
 struct PerfEventBlock {
    PerfEventBlock(uint64_t = 1, BenchmarkParameters = {}, bool = true) {};
-   PerfEventBlock(PerfEvent e, uint64_t = 1, BenchmarkParameters = {}, bool = true) {};
+   PerfEventBlock(PerfEvent e, uint64_t = 1, BenchmarkParameters = {}, bool = true) { (void) e; };
 };
 #endif

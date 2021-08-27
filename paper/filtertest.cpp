@@ -24,6 +24,7 @@
 #include <random>
 #include <string>
 #include <vector>
+#include <map>
 #include <lz4.h>
 
 using namespace std;
@@ -394,7 +395,7 @@ static pair<bool, vector<pair<unsigned, double>>> doTest(CompressionRunner& runn
 
 template <class T>
 void cmpCase(unsigned blockSize, const string& file) {
-   uint64_t bareSize = 0, totalSize = 0;
+   unsigned long bareSize = 0, totalSize = 0;
    double bulkTime = 0, compressionTime = 0, decompressionTime = 0, compressionRatio;
    T runner(blockSize);
    constexpr unsigned repeat = 100;

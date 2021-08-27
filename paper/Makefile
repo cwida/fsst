@@ -1,28 +1,29 @@
 SHELL := /bin/bash
 
-OPT=-O3 -march=native -DNDEBUG
+OPT=-O3 -DNDEBUG
 
 all: cw vcw cw-greedy cw-strncmp hcw hcw-opt filtertest linetest
 clean:
 	-@rm -f filtertest linetest cw cw-greedy cw-strncmp hcw hcw-opt 
 cw: cw.cpp
-	g++ -std=c++17 -W -Wall -ocw $(OPT) -g cw.cpp
+	g++ -std=c++14 -W -Wall -ocw $(OPT) -g cw.cpp
 cw-greedy: cw.cpp
-	g++ -std=c++17 -W -Wall -DGREEDY -ocw-greedy $(OPT) -g cw.cpp
+	g++ -std=c++14 -W -Wall -DGREEDY -ocw-greedy $(OPT) -g cw.cpp
 cw-strncmp: cw.cpp
-	g++ -std=c++17 -W -Wall -DSTRNCMP -ocw-strncmp $(OPT) -g cw.cpp
+	g++ -std=c++14 -W -Wall -DSTRNCMP -ocw-strncmp $(OPT) -g cw.cpp
 vcw: vcw.cpp
-	g++ -std=c++17 -W -Wall -ovcw $(OPT) -g vcw.cpp
+	g++ -std=c++14 -W -Wall -ovcw $(OPT) -g vcw.cpp
 hcw: hcw.cpp 
-	g++ -std=c++17 -W -Wall  $(OPT) -g -ohcw -DNONOPT_FSST -I.. ../libfsst.cpp hcw.cpp 
+	g++ -std=c++14 -W -Wall  $(OPT) -g -ohcw -DNONOPT_FSST -I.. ../libfsst.cpp hcw.cpp 
 hcw-opt: hcw.cpp ../libfsst.a 
-	g++ -std=c++17 -W -Wall -ohcw-opt $(OPT) -g hcw.cpp -I.. -L.. -lfsst
+	g++ -std=c++14 -W -Wall -ohcw-opt $(OPT) -g hcw.cpp -I.. -L.. -lfsst
 
 filtertest: filtertest.cpp ../libfsst.a
-	g++ -std=c++17 -W -Wall -ofiltertest -g $(OPT) filtertest.cpp -llz4 -I.. -L.. -lfsst 
+	g++ -std=c++14 -W -Wall -ofiltertest -g $(OPT) filtertest.cpp -llz4 -I.. -L.. -lfsst 
 
 linetest: linetest.cpp ../libfsst.a
-	g++ -std=c++17 -W -Wall -olinetest -Izstd -Lzstd -g $(OPT) linetest.cpp -llz4 -l:libzstd.so.1 -I.. -L.. -lfsst
+	#g++ -std=c++14 -W -Wall -olinetest -Izstd -Lzstd -g $(OPT) linetest.cpp -llz4 -l:libzstd.so.1 -I.. -L.. -lfsst
+	g++ -std=c++14 -W -Wall -olinetest -Izstd -Lzstd -g $(OPT) linetest.cpp -llz4 -lzstd -I.. -L.. -lfsst
 
 experiments: results/perline.csv results/fullblock.csv results/evolution.csv results/filter.csv results/line.csv results/FSST-vs-LZ4.csv results/kernels.tex results/lz4-smallblocks.csv results/sorted.csv
 

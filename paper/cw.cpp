@@ -26,6 +26,7 @@
 #include <numeric>
 #include <cstring>
 #include <queue>
+#include <array>
 #include "PerfEvent.hpp"
 #include "sais.hxx"
 
@@ -444,7 +445,7 @@ static void compress128(const SymbolMap& symbols,string& result,const char* data
    for (auto index=len;index;index=dpTable[index].prev)
       ++compressedSize;
    result.resize(result.size()+compressedSize);
-   auto writer=result.data()+result.size();
+   auto writer=((char*) result.data())+result.size();
    for (auto index=len;index;index=dpTable[index].prev)
       *(--writer)=dpTable[index].c;
 }

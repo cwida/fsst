@@ -45,8 +45,8 @@
  * We optionally support C-style zero-terminated strings (zero appearing only at the end). In this case, the compressed strings are 
  * also zero-terminated strings. In zero-terminated mode, the zero-byte at the end *is* counted in the string byte-length.
  */
-#ifndef _FSST_H_
-#define _FSST_H_
+#ifndef FSST_H
+#define FSST_H
 
 #ifdef _MSC_VER
 #define __restrict__ 
@@ -218,4 +218,4 @@ fsst_decompress(
 #ifdef __cplusplus
 }
 #endif
-#endif /* _FSST_H_ */
+#endif /* FSST_H */

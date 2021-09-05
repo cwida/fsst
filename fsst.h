@@ -62,6 +62,7 @@ static inline int __builtin_ctzl(unsigned long long x) {
 
 #ifdef __cplusplus
 #define FSST_FALLTHROUGH [[fallthrough]]
+#include <cstring>
 extern "C" {
 #else
 #define FSST_FALLTHROUGH 
@@ -151,23 +152,22 @@ fsst_decompress(
    unsigned char*__restrict__ strOut = (unsigned char* __restrict__) output;
    unsigned long long*__restrict__ symbol = (unsigned long long* __restrict__) decoder->symbol; 
    size_t code, posOut = 0, posIn = 0;
-#ifndef FSST_MUST_ALIGN_STORES /* define this if your platform does not allow unaligned memory access */
-typedef unsigned long long fsst_unaligned64_t __attribute__((aligned(1)));
+#define FSST_COPY_WORD(dst,src) memcpy((unsigned long long*) (dst), &(src), sizeof(unsigned long long))
 #if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
    while (posOut+32 <= size && posIn+4 <= lenIn) {
       unsigned int nextBlock = *((unsigned int*) (strIn+posIn));
       unsigned int escapeMask = (nextBlock&0x80808080u)&((((~nextBlock)&0x7F7F7F7Fu)+0x7F7F7F7Fu)^0x80808080u);
       if (escapeMask == 0) {
-         code = strIn[posIn++]; *(fsst_unaligned64_t*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
-         code = strIn[posIn++]; *(fsst_unaligned64_t*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
-         code = strIn[posIn++]; *(fsst_unaligned64_t*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
-         code = strIn[posIn++]; *(fsst_unaligned64_t*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
-      } else { 
+         code = strIn[posIn++]; FSST_COPY_WORD(strOut+posOut, symbol[code]); posOut += len[code]; 
+         code = strIn[posIn++]; FSST_COPY_WORD(strOut+posOut, symbol[code]); posOut += len[code]; 
+         code = strIn[posIn++]; FSST_COPY_WORD(strOut+posOut, symbol[code]); posOut += len[code]; 
+         code = strIn[posIn++]; FSST_COPY_WORD(strOut+posOut, symbol[code]); posOut += len[code]; 
+     } else { 
          unsigned long firstEscapePos=__builtin_ctzl((unsigned long long) escapeMask)>>3;
          switch(firstEscapePos) { /* Duff's device */
-         case 3: code = strIn[posIn++]; *(fsst_unaligned64_t*) (strOut+posOut) = symbol[code]; posOut += len[code]; FSST_FALLTHROUGH;
-         case 2: code = strIn[posIn++]; *(fsst_unaligned64_t*) (strOut+posOut) = symbol[code]; posOut += len[code]; FSST_FALLTHROUGH;
-         case 1: code = strIn[posIn++]; *(fsst_unaligned64_t*) (strOut+posOut) = symbol[code]; posOut += len[code]; FSST_FALLTHROUGH;
+         case 3: code = strIn[posIn++]; FSST_COPY_WORD(strOut+posOut, symbol[code]); posOut += len[code];
+         case 2: code = strIn[posIn++]; FSST_COPY_WORD(strOut+posOut, symbol[code]); posOut += len[code];
+         case 1: code = strIn[posIn++]; FSST_COPY_WORD(strOut+posOut, symbol[code]); posOut += len[code];
          case 0: posIn+=2; strOut[posOut++] = strIn[posIn-1]; /* decompress an escaped byte */
          }
       }
@@ -176,9 +176,9 @@ typedef unsigned long long fsst_unaligned64_t __attribute__((aligned(1)));
       if (posIn+2 <= lenIn) { 
 	 strOut[posOut] = strIn[posIn+1]; 
          if (strIn[posIn] != FSST_ESC) {
-            code = strIn[posIn++]; *(fsst_unaligned64_t*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
+            code = strIn[posIn++]; FSST_COPY_WORD(strOut+posOut, symbol[code]); posOut += len[code]; 
             if (strIn[posIn] != FSST_ESC) {
-               code = strIn[posIn++]; *(fsst_unaligned64_t*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
+               code = strIn[posIn++]; FSST_COPY_WORD(strOut+posOut, symbol[code]); posOut += len[code]; 
             } else { 
                posIn += 2; strOut[posOut++] = strIn[posIn-1]; 
             }
@@ -187,19 +187,18 @@ typedef unsigned long long fsst_unaligned64_t __attribute__((aligned(1)));
          } 
       }
       if (posIn < lenIn) { // last code cannot be an escape
-         code = strIn[posIn++]; *(fsst_unaligned64_t*) (strOut+posOut) = symbol[code]; posOut += len[code]; 
+         code = strIn[posIn++]; FSST_COPY_WORD(strOut+posOut, symbol[code]); posOut += len[code]; 
       }
    }
 #else
    while (posOut+8 <= size && posIn < lenIn)
       if ((code = strIn[posIn++]) < FSST_ESC) { /* symbol compressed as code? */
-         *(fsst_unaligned64_t*) (strOut+posOut) = symbol[code]; /* unaligned memory write */
+         FSST_COPY_WORD(strOut+posOut, symbol[code]); /* unaligned memory write */
          posOut += len[code];
       } else { 
          strOut[posOut] = strIn[posIn]; /* decompress an escaped byte */
          posIn++; posOut++; 
       }
-#endif
 #endif
    while (posIn < lenIn)
       if ((code = strIn[posIn++]) < FSST_ESC) {
@@ -219,5 +218,4 @@ typedef unsigned long long fsst_unaligned64_t __attribute__((aligned(1)));
 #ifdef __cplusplus
 }
 #endif
-
 #endif /* _FSST_H_ */

@@ -105,56 +105,58 @@ SymbolTable *buildSymbolTable(Counters& counters, vector<u8*> line, size_t len[]
             if (rnd128(i) > sampleFrac) continue;
          }
          if (cur < end) {
-            u8* old = cur;
-            u16 pos2 = 255, pos1 = st->findLongestSymbol(cur, end);
-            cur += st->symbols[pos1].length();
-            gain += (int) (st->symbols[pos1].length()-(1+isEscapeCode(pos1)));
+            u8* start = cur;
+            u16 code2 = 255, code1 = st->findLongestSymbol(cur, end);
+            cur += st->symbols[code1].length();
+            gain += (int) (st->symbols[code1].length()-(1+isEscapeCode(code1)));
             while (true) {
                // count single symbol (i.e. an option is not extending it)
-               counters.count1Inc(pos1);
+               counters.count1Inc(code1);
 	
-               // consider just using the next byte
-               if (st->symbols[pos1].length() != 1) // do not count escaped bytes doubly
-                  counters.count1Inc(*old); 
-	       old = cur;
+               // as an alternative, consider just using the next byte..
+               if (st->symbols[code1].length() != 1) // .. but do not count single byte symbols doubly
+                  counters.count1Inc(*start); 
+
+               if (cur==end) { 
+                  break;
+               } 
 
                // now match a new symbol
+	       start = cur;
                if (cur<end-7) {
                   u64 word = fsst_unaligned_load(cur);
-                  size_t pos = word & 0xFFFFFF;
-                  size_t idx = FSST_HASH(pos)&(st->hashTabSize-1);
+                  size_t code = word & 0xFFFFFF;
+                  size_t idx = FSST_HASH(code)&(st->hashTabSize-1);
                   Symbol s = st->hashTab[idx];
-                  pos2 = st->shortCodes[word & 0xFFFF] & FSST_CODE_MASK;
+                  code2 = st->shortCodes[word & 0xFFFF] & FSST_CODE_MASK;
                   word &= (0xFFFFFFFFFFFFFFFF >> (u8) s.icl);
                   if ((s.icl < FSST_ICL_FREE) & (s.val.num == word)) {
-                     pos2 = s.code(); 
+                     code2 = s.code(); 
 		     cur += s.length();
-                  } else if (pos2 >= FSST_CODE_BASE) {
+                  } else if (code2 >= FSST_CODE_BASE) {
                      cur += 2;
                   } else {
-                     pos2 = st->byteCodes[word & 0xFF] & FSST_CODE_MASK;
+                     code2 = st->byteCodes[word & 0xFF] & FSST_CODE_MASK;
                      cur += 1;
                   }
-               } else if (cur==end) { 
-                  break;
                } else {
-                  assert(cur<end);
-                  pos2 = st->findLongestSymbol(cur, end);
-                  cur += st->symbols[pos2].length();
+                  code2 = st->findLongestSymbol(cur, end);
+                  cur += st->symbols[code2].length();
                }
  
                // compute compressed output size
-               gain += ((int) (cur-old))-(1+isEscapeCode(pos2));
+               gain += ((int) (cur-start))-(1+isEscapeCode(code2));
 
-               // now count the subsequent two symbols we encode as an extension possibility
+               // now count the subsequent two symbols we encode as an extension codesibility
                if (sampleFrac < 128) { // no need to count pairs in final round
-                  counters.count2Inc(pos1, pos2);
+	          // consider the symbol that is the concatenation of the two last symbols
+                  counters.count2Inc(code1, code2);
 
-                  // consider just using the next byte
-                  if ((cur-old) > 1)  // do not count escaped bytes doubly
-                     counters.count2Inc(pos1, *old);
+                  // as an alternative, consider just extending with the next byte..
+                  if ((cur-start) > 1)  // ..but do not count single byte extensions doubly
+                     counters.count2Inc(code1, *start);
                }
-               pos1 = pos2;
+               code1 = code2;
             }
          }
       }

@@ -105,15 +105,20 @@ SymbolTable *buildSymbolTable(Counters& counters, vector<u8*> line, size_t len[]
             if (rnd128(i) > sampleFrac) continue;
          }
          if (cur < end) {
+            u8* old = cur;
             u16 pos2 = 255, pos1 = st->findLongestSymbol(cur, end);
             cur += st->symbols[pos1].length();
             gain += (int) (st->symbols[pos1].length()-(1+isEscapeCode(pos1)));
             while (true) {
-	       u8* old = cur;
-               counters.count1Inc(pos1);
                // count single symbol (i.e. an option is not extending it)
-               if (st->symbols[pos1].length() != 1)
-                  counters.count1Inc(*cur);
+               counters.count1Inc(pos1);
+	
+               // consider just using the next byte
+               if (st->symbols[pos1].length() != 1) // do not count escaped bytes doubly
+                  counters.count1Inc(*old); 
+	       old = cur;
+
+               // now match a new symbol
                if (cur<end-7) {
                   u64 word = fsst_unaligned_load(cur);
                   size_t pos = word & 0xFFFFFF;
@@ -144,6 +149,8 @@ SymbolTable *buildSymbolTable(Counters& counters, vector<u8*> line, size_t len[]
                // now count the subsequent two symbols we encode as an extension possibility
                if (sampleFrac < 128) { // no need to count pairs in final round
                   counters.count2Inc(pos1, pos2);
+
+                  // consider just using the next byte
                   if ((cur-old) > 1)  // do not count escaped bytes doubly
                      counters.count2Inc(pos1, *old);
                }

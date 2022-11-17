@@ -97,7 +97,7 @@ SymbolTable *buildSymbolTable(Counters& counters, vector<u8*> line, size_t len[]
       int gain = 0;
 
       for(size_t i=0; i<line.size(); i++) {
-         u8* cur = line[i];
+         u8* cur = line[i], *start = cur;
          u8* end = cur + len[i];
 
          if (sampleFrac < 128) {
@@ -105,7 +105,6 @@ SymbolTable *buildSymbolTable(Counters& counters, vector<u8*> line, size_t len[]
             if (rnd128(i) > sampleFrac) continue;
          }
          if (cur < end) {
-            u8* start = cur;
             u16 code2 = 255, code1 = st->findLongestSymbol(cur, end);
             cur += st->symbols[code1].length();
             gain += (int) (st->symbols[code1].length()-(1+isEscapeCode(code1)));
@@ -147,7 +146,6 @@ SymbolTable *buildSymbolTable(Counters& counters, vector<u8*> line, size_t len[]
                // compute compressed output size
                gain += ((int) (cur-start))-(1+isEscapeCode(code2));
 
-               // now count the subsequent two symbols we encode as an extension codesibility
                if (sampleFrac < 128) { // no need to count pairs in final round
 	          // consider the symbol that is the concatenation of the two last symbols
                   counters.count2Inc(code1, code2);

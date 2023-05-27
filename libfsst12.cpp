@@ -214,7 +214,7 @@ static inline ulong compressBulk(SymbolMap &symbolMap, ulong nlines, ulong lenIn
       u8 *cur = strIn[curLine]; 
       u8 *end = cur + lenIn[curLine]; 
       strOut[curLine] = out;
-      while (cur+16 <= end && (lim-out) >= 4) {
+      while (cur+16 <= end && (lim-out) >= 8) {
          u64 word = fsst_unaligned_load(cur);
          ulong code = symbolMap.shortCodes[word & 0xFFFF];
          ulong pos = (u32) word; // key is first 4 bytes
@@ -237,25 +237,25 @@ static inline ulong compressBulk(SymbolMap &symbolMap, ulong nlines, ulong lenIn
          }
          cur += (code >> 12);
          res |= (code&FSST_CODE_MASK) << 12;
-         memcpy(out, &res, sizeof(u32));
+         memcpy(out, &res, sizeof(u64));
          out += 3; 
       }
       while (cur < end) {
          ulong code = symbolMap.findExpansion(Symbol(cur, end));
          u32 res = (code&FSST_CODE_MASK);
-         if (out+4 > lim) {
+         if (out+8 > lim) {
              return curLine; // u32 write would be out of bounds (out of output memory) 
          }
          cur += code >> 12;
          if (cur >= end) {
-            memcpy(out, &res, sizeof(u32));
+            memcpy(out, &res, sizeof(u64));
 	    out += 2;
             break;
          }
          code = symbolMap.findExpansion(Symbol(cur, end));
          res |= (code&FSST_CODE_MASK) << 12;
          cur += code >> 12;
-         memcpy(out, &res, sizeof(u32));
+         memcpy(out, &res, sizeof(u64));
 	 out += 3;
       } 
       lenOut[curLine] = out - strOut[curLine];

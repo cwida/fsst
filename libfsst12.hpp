@@ -201,7 +201,7 @@ struct SymbolMap {
 };
 
 
-#ifdef NONOPT_FSST
+#if 0 //def NONOPT_FSST
 struct Counters {
    u16 count1[FSST_CODE_MAX];   // array to count frequency of symbols as they occur in the sample 
    u16 count2[FSST_CODE_MAX][FSST_CODE_MAX]; // array to count subsequent combinations of two symbols in the sample 

@@ -17,6 +17,7 @@
 // You can contact the authors via the FSST source repository : https://github.com/cwida/fsst
 #include "libfsst12.hpp"
 #include <math.h>
+#include <string.h>
 
 Symbol concat(Symbol a, Symbol b) {
    Symbol s;
@@ -213,7 +214,7 @@ static inline ulong compressBulk(SymbolMap &symbolMap, ulong nlines, ulong lenIn
       u8 *cur = strIn[curLine]; 
       u8 *end = cur + lenIn[curLine]; 
       strOut[curLine] = out;
-      while (cur+16 <= end && (lim-out) >= 16) {
+      while (cur+16 <= end && (lim-out) >= 4) {
          u64 word = reinterpret_cast<const uint64_t*>(cur)[0];
          ulong code = symbolMap.shortCodes[word & 0xFFFF];
          ulong pos = (u32) word; // key is first 4 bytes
@@ -236,7 +237,7 @@ static inline ulong compressBulk(SymbolMap &symbolMap, ulong nlines, ulong lenIn
          }
          cur += (code >> 12);
          res |= (code&FSST_CODE_MASK) << 12;
-         *(u32*) out = res;
+         memcpy(out, &res, sizeof(u32));
          out += 3; 
       }
       while (cur < end) {
@@ -247,14 +248,14 @@ static inline ulong compressBulk(SymbolMap &symbolMap, ulong nlines, ulong lenIn
          }
          cur += code >> 12;
          if (cur >= end) {
-            *(u32*) out = res;
+            memcpy(out, &res, sizeof(u32));
 	    out += 2;
             break;
          }
          code = symbolMap.findExpansion(Symbol(cur, end));
          res |= (code&FSST_CODE_MASK) << 12;
          cur += code >> 12;
-         *(u32*) out = res;
+         memcpy(out, &res, sizeof(u32));
 	 out += 3;
       } 
       lenOut[curLine] = out - strOut[curLine];

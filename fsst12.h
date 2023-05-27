@@ -138,8 +138,7 @@ fsst_decompress(
 #ifndef FSST_MUST_ALIGN /* defining on platforms that require aligned memory access may help their performance */
    while (posOut+16 <= size && posIn+4 < lenIn) {
       unsigned int code, code0, code1;
-      //memcpy(&code, strIn+posIn, sizeof(unsigned int));
-      code = *(unsigned int*) (strIn+posIn);
+      memcpy(&code, strIn+posIn, sizeof(unsigned int));
       code0 = code & 4095;
       code1 = (code >> 12) & 4095;
       posIn += 3;
@@ -150,8 +149,7 @@ fsst_decompress(
    }
    if (posOut+8 <= size && posIn < lenIn) {
       unsigned short code;
-      //memcpy(&code, strIn+posIn, sizeof(unsigned short));
-      code = *(unsigned short*) (strIn+posIn);
+      memcpy(&code, strIn+posIn, sizeof(unsigned short));
       code &= 4095;
       posIn=lenIn;
       FSST_UNALIGNED_STORE(strOut+posOut, symbol[code]); 
@@ -160,8 +158,7 @@ fsst_decompress(
 #endif
    while (posIn+3 < lenIn) {
       unsigned int code, code0, code1;
-      //memcpy(&code, strIn+posIn, sizeof(unsigned int));
-      code = *(unsigned int*) (strIn+posIn);
+      memcpy(&code, strIn+posIn, sizeof(unsigned int));
       code0 = code & 4095;
       code1 = (code >> 12) & 4095;
       posIn += 3;
@@ -173,8 +170,7 @@ fsst_decompress(
    }
    if (posIn < lenIn) {
       unsigned short code;
-      //memcpy(&code, strIn+posIn, sizeof(unsigned short));
-      code = *(unsigned short*) (strIn+posIn);
+      memcpy(&code, strIn+posIn, sizeof(unsigned short));
       code &= 4095;
       posIn=lenIn;
       unsigned char *__restrict__ src, *__restrict__ lim, *__restrict__ dst = strOut+posOut;

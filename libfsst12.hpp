@@ -53,6 +53,12 @@ typedef uint64_t u64;
 #define FSST_CODE_MAX 4096
 #define FSST_CODE_MASK      ((u16) (FSST_CODE_MAX-1)) 
 
+inline uint64_t fsst_unaligned_load(u8 const* V) {
+    uint64_t Ret;
+    memcpy(&Ret, V, sizeof(uint64_t)); // compiler will generate efficient code (unaligned load, where possible)
+    return Ret;
+}
+
 struct Symbol {
    static const unsigned maxLength = 8;
 

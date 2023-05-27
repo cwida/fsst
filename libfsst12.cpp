@@ -99,7 +99,7 @@ SymbolMap *buildSymbolMap(Counters& counters, long sampleParam, vector<ulong>& s
 	       u8 *old = cur;
                counters.count1Inc(pos1);
                if (cur<end-7) {
-                  ulong word = reinterpret_cast<const uint64_t*>(cur)[0];
+                  ulong word = fsst_unaligned_load(cur);
                   ulong pos = (u32) word; // key is first 4 bytes!!
                   ulong idx = FSST_HASH(pos)&(st->hashTabSize-1);
                   Symbol s = st->hashTab[idx];
@@ -215,7 +215,7 @@ static inline ulong compressBulk(SymbolMap &symbolMap, ulong nlines, ulong lenIn
       u8 *end = cur + lenIn[curLine]; 
       strOut[curLine] = out;
       while (cur+16 <= end && (lim-out) >= 4) {
-         u64 word = reinterpret_cast<const uint64_t*>(cur)[0];
+         u64 word = fsst_unaligned_load(cur);
          ulong code = symbolMap.shortCodes[word & 0xFFFF];
          ulong pos = (u32) word; // key is first 4 bytes
          ulong idx = FSST_HASH(pos)&(symbolMap.hashTabSize-1);
@@ -226,7 +226,7 @@ static inline ulong compressBulk(SymbolMap &symbolMap, ulong nlines, ulong lenIn
          }
          cur += (code >> 12);
          u32 res = code & FSST_CODE_MASK;
-         word = reinterpret_cast<const uint64_t*>(cur)[0];
+         word = fsst_unaligned_load(cur);
          code = symbolMap.shortCodes[word & 0xFFFF];
          pos = (u32) word; // key is first 4 bytes
          idx = FSST_HASH(pos)&(symbolMap.hashTabSize-1);

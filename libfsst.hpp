@@ -116,7 +116,7 @@ struct QSymbol{
 // two phases of compression, before and after optimize():
 //
 // (1) to encode values we probe (and maintain) three datastructures:
-// - u16 byteCodes[65536] array at the position of the next byte  (s.length==1)
+// - u16 byteCodes[256] array at the position of the next byte  (s.length==1)
 // - u16 shortCodes[65536] array at the position of the next twobyte pattern (s.length==2)
 // - Symbol hashtable[1024] (keyed by the next three bytes, ie for s.length>2), 
 // this search will yield a u16 code, it points into Symbol symbols[]. You always find a hit, because the first 256 codes are 

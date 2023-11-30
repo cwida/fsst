@@ -199,7 +199,7 @@ SymbolMap *buildSymbolMap(Counters& counters, long sampleParam, vector<ulong>& s
       if (gain >= bestGain) { // a new best solution!
          *bestMap = *st; bestGain = gain;
       } 
-      if (sampleFrac >= 128) break; // we do 5 rounds (sampleFrac=8,38,68,98,128)
+      if (sampleFrac >= 128) break; // we do 4 rounds (sampleFrac=14,52,90,128)
       makeMap(st, counters);
    }
    delete st;

@@ -113,8 +113,8 @@ unsigned long               /* OUT: the number of compressed strings (<=n) that 
 fsst_compress(
    fsst_encoder_t *encoder,  /* IN: encoder obtained from fsst_create(). */
    unsigned long nstrings,  /* IN: number of strings in batch to compress. */
-   unsigned long lenIn[],   /* IN: byte-lengths of the inputs */
-   unsigned char *strIn[],  /* IN: input string start pointers. */
+   const unsigned long lenIn[],   /* IN: byte-lengths of the inputs */
+   const unsigned char *strIn[],  /* IN: input string start pointers. */
    unsigned long outsize,   /* IN: byte-length of output buffer. */
    unsigned char *output,   /* OUT: memory buffer to put the compressed strings in (one after the other). */
    unsigned long lenOut[],   /* OUT: byte-lengths of the compressed strings. */

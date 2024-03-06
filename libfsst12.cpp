@@ -66,11 +66,9 @@ SymbolMap *buildSymbolMap(Counters& counters, long sampleParam, vector<ulong>& s
 
    for(ulong i=0; i<sample.size(); i++) {
       u8* cur = line[sample[i]];
-      u8* end = cur + len[sample[i]];
-      if (sampleParam < 0 && i+1 == sample.size()) 
+      if (sampleParam < 0 && i+1 == sample.size())
          cur -= sampleSize; // use only last part of last line (which could be too long for an efficient sample)
    }
-   u32 minSize = FSST_SAMPLEMAXSZ;
 
    // a random number between 0 and 128
    auto rnd128 = [&](ulong i) { return 1 + (FSST_HASH((i+1)*sampleFrac)&127); };
@@ -207,12 +205,12 @@ SymbolMap *buildSymbolMap(Counters& counters, long sampleParam, vector<ulong>& s
 }
 
 // optimized adaptive *scalar* compression method
-static inline ulong compressBulk(SymbolMap &symbolMap, ulong nlines, ulong lenIn[], u8* strIn[], ulong size, u8* out, ulong lenOut[], u8* strOut[]) {
+static inline ulong compressBulk(SymbolMap &symbolMap, ulong nlines, const ulong lenIn[], const u8* strIn[], ulong size, u8* out, ulong lenOut[], u8* strOut[]) {
    u8 *lim = out + size;
    ulong curLine;
    for(curLine=0; curLine<nlines; curLine++) {
-      u8 *cur = strIn[curLine]; 
-      u8 *end = cur + lenIn[curLine]; 
+      const u8 *cur = strIn[curLine];
+      const u8 *end = cur + lenIn[curLine];
       strOut[curLine] = out;
       while (cur+16 <= end && (lim-out) >= 8) {
          u64 word = fsst_unaligned_load(cur);
@@ -378,27 +376,27 @@ extern "C" u32 fsst_import(fsst_decoder_t *decoder, u8 *buf) {
 }
 
 // runtime check for simd
-inline ulong _compressImpl(Encoder *e, ulong nlines, ulong lenIn[], u8 *strIn[], ulong size, u8 *output, ulong *lenOut, u8 *strOut[], bool noSuffixOpt, bool avoidBranch, int simd) {
+inline ulong _compressImpl(Encoder *e, ulong nlines, const ulong lenIn[], const u8 *strIn[], ulong size, u8 *output, ulong *lenOut, u8 *strOut[], bool noSuffixOpt, bool avoidBranch, int simd) {
    (void) noSuffixOpt;
    (void) avoidBranch;
    (void) simd;
    return compressBulk(*e->symbolMap, nlines, lenIn, strIn, size, output, lenOut, strOut);
 }
-ulong compressImpl(Encoder *e, ulong nlines, ulong lenIn[], u8 *strIn[], ulong size, u8 *output, ulong *lenOut, u8 *strOut[], bool noSuffixOpt, bool avoidBranch, int simd) {
+ulong compressImpl(Encoder *e, ulong nlines, const ulong lenIn[], const u8 *strIn[], ulong size, u8 *output, ulong *lenOut, u8 *strOut[], bool noSuffixOpt, bool avoidBranch, int simd) {
    return _compressImpl(e, nlines, lenIn, strIn, size, output, lenOut, strOut, noSuffixOpt, avoidBranch, simd);
 }
 
 // adaptive choosing of scalar compression method based on symbol length histogram 
-inline ulong _compressAuto(Encoder *e, ulong nlines, ulong lenIn[], u8 *strIn[], ulong size, u8 *output, ulong *lenOut, u8 *strOut[], int simd) {
+inline ulong _compressAuto(Encoder *e, ulong nlines, const ulong lenIn[], const u8 *strIn[], ulong size, u8 *output, ulong *lenOut, u8 *strOut[], int simd) {
    (void) simd;
    return _compressImpl(e, nlines, lenIn, strIn, size, output, lenOut, strOut, false, false, false);
 }
-ulong compressAuto(Encoder *e, ulong nlines, ulong lenIn[], u8 *strIn[], ulong size, u8 *output, ulong *lenOut, u8 *strOut[], int simd) {
+ulong compressAuto(Encoder *e, ulong nlines, const ulong lenIn[], const u8 *strIn[], ulong size, u8 *output, ulong *lenOut, u8 *strOut[], int simd) {
    return _compressAuto(e, nlines, lenIn, strIn, size, output, lenOut, strOut, simd);
 }
 
 // the main compression function (everything automatic)
-extern "C" ulong fsst_compress(fsst_encoder_t *encoder, ulong nlines, ulong lenIn[], u8 *strIn[], ulong size, u8 *output, ulong *lenOut, u8 *strOut[]) {
+extern "C" ulong fsst_compress(fsst_encoder_t *encoder, ulong nlines, const ulong lenIn[], const u8 *strIn[], ulong size, u8 *output, ulong *lenOut, u8 *strOut[]) {
    // to be faster than scalar, simd needs 64 lines or more of length >=12; or fewer lines, but big ones (totLen > 32KB)
    ulong totLen = accumulate(lenIn, lenIn+nlines, 0);
    int simd = totLen > nlines*12 && (nlines > 64 || totLen > (ulong) 1<<15); 

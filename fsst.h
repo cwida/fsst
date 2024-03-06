@@ -80,7 +80,7 @@ typedef void* fsst_encoder_t; /* opaque type - it wraps around a rather large (~
 typedef struct {
    unsigned long long version;     /* version id */
    unsigned char zeroTerminated;   /* terminator is a single-byte code that does not appear in longer symbols */
-   unsigned char len[255];         /* len[x] is the byte-length of the symbol x (1 < len[x] <= 8). */
+   unsigned char len[255];         /* len[x] is the byte-lengths of the symbol x (1 < len[x] <= 8). */
    unsigned long long symbol[255]; /* symbol[x] contains in LITTLE_ENDIAN the bytesequence that code x represents (0 <= x < 255). */ 
 } fsst_decoder_t;
 
@@ -131,8 +131,8 @@ size_t                      /* OUT: the number of compressed strings (<=n) that 
 fsst_compress(
    fsst_encoder_t *encoder, /* IN: encoder obtained from fsst_create(). */
    size_t nstrings,         /* IN: number of strings in batch to compress. */
-   size_t lenIn[],          /* IN: byte-lengths of the inputs */
-   unsigned char *strIn[],  /* IN: input string start pointers. */
+   const size_t lenIn[],          /* IN: byte-lengths of the inputs */
+   const unsigned char *strIn[],  /* IN: input string start pointers. */
    size_t outsize,          /* IN: byte-length of output buffer. */
    unsigned char *output,   /* OUT: memory buffer to put the compressed strings in (one after the other). */
    size_t lenOut[],         /* OUT: byte-lengths of the compressed strings. */
@@ -142,9 +142,9 @@ fsst_compress(
 /* Decompress a single string, inlined for speed. */
 inline size_t /* OUT: bytesize of the decompressed string. If > size, the decoded output is truncated to size. */
 fsst_decompress(
-   fsst_decoder_t *decoder,  /* IN: use this symbol table for compression. */
+   const fsst_decoder_t *decoder,  /* IN: use this symbol table for compression. */
    size_t lenIn,             /* IN: byte-length of compressed string. */
-   unsigned char *strIn,     /* IN: compressed string. */
+   const unsigned char *strIn,     /* IN: compressed string. */
    size_t size,              /* IN: byte-length of output buffer. */
    unsigned char *output     /* OUT: memory buffer to put the decompressed string in. */
 ) {

@@ -466,8 +466,9 @@ vector<u8*> makeSample(u8* sampleBuf, u8* strIn[], size_t **lenRef, size_t nline
       size_t sampleRnd = FSST_HASH(4637947);
       u8* sampleLim = sampleBuf + FSST_SAMPLETARGET;
       size_t *sampleLen = *lenRef = new size_t[nlines + FSST_SAMPLEMAXSZ/FSST_SAMPLELINE];
+      size_t* sampleLenLim = sampleLen + nlines + FSST_SAMPLEMAXSZ/FSST_SAMPLELINE;
 
-      while(sampleBuf < sampleLim) {
+      while(sampleBuf < sampleLim && sampleLen < sampleLenLim) {
          // choose a non-empty line
          sampleRnd = FSST_HASH(sampleRnd);
          size_t linenr = sampleRnd % nlines;

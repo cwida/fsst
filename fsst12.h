@@ -124,9 +124,9 @@ fsst_compress(
 /* Decompress a single string, inlined for speed. */
 inline unsigned long        /* OUT: bytesize of the decompressed string. If > size, the decoded output is truncated to size. */
 fsst_decompress(
-   fsst_decoder_t *decoder,  /* IN: use this dictionary for compression. */
+   const fsst_decoder_t *decoder,  /* IN: use this dictionary for compression. */
    unsigned long lenIn,     /* IN: byte-length of compressed string. */
-   unsigned char *strIn,    /* IN: compressed string. */
+   const unsigned char *strIn,    /* IN: compressed string. */
    unsigned long size,      /* IN: byte-length of output buffer. */
    unsigned char *output    /* OUT: memory buffer to put the decompressed string in. */
 ) {

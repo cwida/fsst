@@ -80,7 +80,7 @@ typedef void* fsst_encoder_t; /* opaque type - it wraps around a rather large (~
 typedef struct {
    unsigned long long version;     /* version id */
    unsigned char zeroTerminated;   /* terminator is a single-byte code that does not appear in longer symbols */
-   unsigned char len[255];         /* len[x] is the byte-lengths of the symbol x (1 < len[x] <= 8). */
+   unsigned char len[255];         /* len[x] is the byte-length of the symbol x (1 < len[x] <= 8). */
    unsigned long long symbol[255]; /* symbol[x] contains in LITTLE_ENDIAN the bytesequence that code x represents (0 <= x < 255). */ 
 } fsst_decoder_t;
 

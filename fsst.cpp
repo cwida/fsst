@@ -168,7 +168,7 @@ int main(int argc, char* argv[]) {
           unsigned char tmp[FSST_MAXHEADER];
           fsst_encoder_t *encoder = fsst_create(1, &srcLen[swap], &srcBuf[swap], 0);
           size_t hdr = fsst_export(encoder, tmp);
-          if (fsst_compress(encoder, 1, &srcLen[swap], &srcBuf[swap], FSST_MEMBUF*2, dstMem[swap]+FSST_MAXHEADER+3,
+          if (fsst_compress(encoder, 1, &srcLen[swap], const_cast<const unsigned char**>(&srcBuf[swap]), FSST_MEMBUF*2, dstMem[swap]+FSST_MAXHEADER+3,
                                        &dstLen[swap], &dstBuf[swap]) < 1) return -1;
           dstLen[swap] += 3 + hdr;
           dstBuf[swap] -= 3 + hdr;

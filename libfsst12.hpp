@@ -83,7 +83,7 @@ struct Symbol {
       }
    }
    explicit Symbol(const char* begin, const char* end) : Symbol(begin, end-begin) {}
-   explicit Symbol(u8* begin, u8* end) : Symbol((const char*)begin, end-begin) {}
+   explicit Symbol(const u8* begin, const u8* end) : Symbol((const char*)begin, end-begin) {}
    void set_code_len(u32 code, u32 len) { gcl = (len<<28)|(code<<16)|((8-len)*8); }
 
    u8 length() const { return gcl >> 28; }

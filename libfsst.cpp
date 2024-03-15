@@ -56,7 +56,7 @@ std::ostream& operator<<(std::ostream& out, const Symbol& s) {
    return out;
 }
 
-SymbolTable *buildSymbolTable(Counters& counters, vector<u8*> line, size_t len[], bool zeroTerminated=false) {
+SymbolTable *buildSymbolTable(Counters& counters, vector<const u8*> line, const size_t len[], bool zeroTerminated=false) {
    SymbolTable *st = new SymbolTable(), *bestTable = new SymbolTable();
    int bestGain = (int) -FSST_SAMPLEMAXSZ; // worst case (everything exception)
    size_t sampleFrac = 128;
@@ -69,8 +69,8 @@ SymbolTable *buildSymbolTable(Counters& counters, vector<u8*> line, size_t len[]
       u16 byteHisto[256];
       memset(byteHisto, 0, sizeof(byteHisto));
       for(size_t i=0; i<line.size(); i++) {
-         u8* cur = line[i];
-         u8* end = cur + len[i];
+         const u8* cur = line[i];
+         const u8* end = cur + len[i];
          while(cur < end) byteHisto[*cur++]++;
       }
       u32 minSize = FSST_SAMPLEMAXSZ, i = st->terminator = 256;
@@ -90,8 +90,8 @@ SymbolTable *buildSymbolTable(Counters& counters, vector<u8*> line, size_t len[]
       int gain = 0;
 
       for(size_t i=0; i<line.size(); i++) {
-         u8* cur = line[i], *start = cur;
-         u8* end = cur + len[i];
+         const u8* cur = line[i], *start = cur;
+         const u8* end = cur + len[i];
 
          if (sampleFrac < 128) {
             // in earlier rounds (sampleFrac < 128) we skip data in the sample (reduces overall work ~2x)
@@ -451,9 +451,10 @@ static inline size_t compressBulk(SymbolTable &symbolTable, size_t nlines, const
 #define FSST_SAMPLELINE ((size_t) 512)
 
 // quickly select a uniformly random set of lines such that we have between [FSST_SAMPLETARGET,FSST_SAMPLEMAXSZ) string bytes
-vector<u8*> makeSample(u8* sampleBuf, u8* strIn[], size_t **lenRef, size_t nlines) {
-   size_t totSize = 0, *lenIn = *lenRef;
-   vector<u8*> sample;
+vector<const u8*> makeSample(u8* sampleBuf, const u8* strIn[], const size_t **lenRef, size_t nlines) {
+   size_t totSize = 0;
+   const size_t *lenIn = *lenRef;
+   vector<const u8*> sample;
 
    for(size_t i=0; i<nlines; i++) 
       totSize += lenIn[i];
@@ -463,8 +464,8 @@ vector<u8*> makeSample(u8* sampleBuf, u8* strIn[], size_t **lenRef, size_t nline
          sample.push_back(strIn[i]);
    } else {
       size_t sampleRnd = FSST_HASH(4637947);
-      u8* sampleLim = sampleBuf + FSST_SAMPLETARGET;
-      size_t *sampleLen = *lenRef = new size_t[nlines + FSST_SAMPLEMAXSZ/FSST_SAMPLELINE];
+      const u8* sampleLim = sampleBuf + FSST_SAMPLETARGET;
+      size_t *sampleLen =  new size_t[nlines + FSST_SAMPLEMAXSZ/FSST_SAMPLELINE];
       size_t* sampleLenLim = sampleLen + nlines + FSST_SAMPLEMAXSZ/FSST_SAMPLELINE;
 
       while(sampleBuf < sampleLim && sampleLen < sampleLenLim) {
@@ -485,14 +486,15 @@ vector<u8*> makeSample(u8* sampleBuf, u8* strIn[], size_t **lenRef, size_t nline
          sample.push_back(sampleBuf);
          sampleBuf += *sampleLen++ = len;
       }
+      *lenRef = sampleLen;
    }
    return sample;
 }
 
-extern "C" fsst_encoder_t* fsst_create(size_t n, size_t lenIn[], u8 *strIn[], int zeroTerminated) {
+extern "C" fsst_encoder_t* fsst_create(size_t n, const size_t lenIn[], const u8 *strIn[], int zeroTerminated) {
    u8* sampleBuf = new u8[FSST_SAMPLEMAXSZ];
-   size_t *sampleLen = lenIn;
-   vector<u8*> sample = makeSample(sampleBuf, strIn, &sampleLen, n?n:1); // careful handling of input to get a right-size and representative sample
+   const size_t *sampleLen = lenIn;
+   vector<const u8*> sample = makeSample(sampleBuf, strIn, &sampleLen, n?n:1); // careful handling of input to get a right-size and representative sample
    Encoder *encoder = new Encoder();
    encoder->symbolTable = shared_ptr<SymbolTable>(buildSymbolTable(encoder->counters, sample, sampleLen, zeroTerminated));
    if (sampleLen != lenIn) delete[] sampleLen; 

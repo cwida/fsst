@@ -88,8 +88,8 @@ typedef struct {
 fsst_encoder_t*  
 fsst_create(
    size_t n,         /* IN: number of strings in batch to sample from. */
-   size_t lenIn[],   /* IN: byte-lengths of the inputs */
-   unsigned char *strIn[],  /* IN: string start pointers. */
+   const size_t lenIn[],   /* IN: byte-lengths of the inputs */
+   const unsigned char *strIn[],  /* IN: string start pointers. */
    int zeroTerminated       /* IN: whether input strings are zero-terminated. If so, encoded strings are as well (i.e. symbol[0]=""). */
 );
 

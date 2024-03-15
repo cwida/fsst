@@ -58,14 +58,14 @@ std::ostream& operator<<(std::ostream& out, const Symbol& s) {
 #define FSST_SAMPLETARGET (1<<17) 
 #define FSST_SAMPLEMAXSZ ((long) 2*FSST_SAMPLETARGET) 
 
-SymbolMap *buildSymbolMap(Counters& counters, long sampleParam, vector<ulong>& sample, ulong len[], u8* line[]) {
+SymbolMap *buildSymbolMap(Counters& counters, long sampleParam, vector<ulong>& sample, const ulong len[], const u8* line[]) {
    ulong sampleSize = max(sampleParam, FSST_SAMPLEMAXSZ); // if sampleParam is negative, we need to ignore part of the last line
    SymbolMap *st = new SymbolMap(), *bestMap = new SymbolMap();
    long bestGain = -sampleSize; // worst case (everything exception)
    ulong sampleFrac = 128;
 
    for(ulong i=0; i<sample.size(); i++) {
-      u8* cur = line[sample[i]];
+      const u8* cur = line[sample[i]];
       if (sampleParam < 0 && i+1 == sample.size())
          cur -= sampleSize; // use only last part of last line (which could be too long for an efficient sample)
    }
@@ -78,8 +78,8 @@ SymbolMap *buildSymbolMap(Counters& counters, long sampleParam, vector<ulong>& s
       long gain = 0;
 
       for(ulong i=0; i<sample.size(); i++) {
-         u8* cur = line[sample[i]];
-         u8* end = cur + len[sample[i]];
+         const u8* cur = line[sample[i]];
+         const u8* end = cur + len[sample[i]];
 
          if (sampleParam < 0 && i+1 == sample.size()) { 
             cur -= sampleParam; // use only last part of last line (which could be too long for an efficient sample)
@@ -94,7 +94,7 @@ SymbolMap *buildSymbolMap(Counters& counters, long sampleParam, vector<ulong>& s
             cur += pos1 >> 12;
             pos1 &= FSST_CODE_MASK;
             while (true) {
-	       u8 *old = cur;
+	       const u8 *old = cur;
                counters.count1Inc(pos1);
                if (cur<end-7) {
                   ulong word = fsst_unaligned_load(cur);
@@ -261,7 +261,7 @@ static inline ulong compressBulk(SymbolMap &symbolMap, ulong nlines, const ulong
    return curLine;
 }
 
-long makeSample(vector<ulong> &sample, ulong nlines, ulong len[]) {
+long makeSample(vector<ulong> &sample, ulong nlines, const ulong len[]) {
    ulong i, sampleRnd = 1, sampleProb = 256, sampleSize = 0, totSize = 0;
    ulong sampleTarget = FSST_SAMPLETARGET;
 
@@ -296,7 +296,7 @@ long makeSample(vector<ulong> &sample, ulong nlines, ulong len[]) {
    return (sampleLong < FSST_SAMPLEMAXSZ)?sampleLong:FSST_SAMPLEMAXSZ-sampleLong; 
 }
 
-extern "C" fsst_encoder_t* fsst_create(ulong n, ulong lenIn[], u8 *strIn[], int dummy) {
+extern "C" fsst_encoder_t* fsst_create(ulong n, const ulong lenIn[], const u8 *strIn[], int dummy) {
    vector<ulong> sample;
    (void) dummy;
    long sampleSize = makeSample(sample, n?n:1, lenIn); // careful handling of input to get a right-size and representative sample

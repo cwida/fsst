@@ -70,8 +70,8 @@ typedef struct {
 fsst_encoder_t*  
 fsst_create(
    unsigned long n,         /* IN: number of strings in batch to sample from. */
-   unsigned long lenIn[],   /* IN: byte-lengths of the inputs */
-   unsigned char *strIn[],  /* IN: string start pointers. */
+   const unsigned long lenIn[],   /* IN: byte-lengths of the inputs */
+   const unsigned char *strIn[],  /* IN: string start pointers. */
    int dummy
 );
 

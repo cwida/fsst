@@ -466,6 +466,7 @@ vector<const u8*> makeSample(u8* sampleBuf, const u8* strIn[], const size_t **le
       size_t sampleRnd = FSST_HASH(4637947);
       const u8* sampleLim = sampleBuf + FSST_SAMPLETARGET;
       size_t *sampleLen =  new size_t[nlines + FSST_SAMPLEMAXSZ/FSST_SAMPLELINE];
+      *lenRef = sampleLen;
       size_t* sampleLenLim = sampleLen + nlines + FSST_SAMPLEMAXSZ/FSST_SAMPLELINE;
 
       while(sampleBuf < sampleLim && sampleLen < sampleLenLim) {
@@ -486,7 +487,6 @@ vector<const u8*> makeSample(u8* sampleBuf, const u8* strIn[], const size_t **le
          sample.push_back(sampleBuf);
          sampleBuf += *sampleLen++ = len;
       }
-      *lenRef = sampleLen;
    }
    return sample;
 }

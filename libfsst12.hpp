@@ -77,6 +77,7 @@ struct Symbol {
          *(u64*) symbol = 0;
          for(u32 i=0; i<len; i++) symbol[i] = input[i];
       } else {
+         len = 8;
          *(u64*) symbol = *(u64*) input;
       }
       set_code_len(FSST_CODE_MASK, len);

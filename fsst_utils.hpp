@@ -1,6 +1,8 @@
 #pragma once
 
 #include <stdint.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #if defined(__linux__) || defined(__CYGWIN__)
 
@@ -18,6 +20,22 @@
 #define le64toh(x) OSSwapLittleToHostInt64(x)
 
 #endif
+
+class FDDefer {
+    const int fd_;
+
+public:
+    FDDefer(int fd) : fd_(fd) {}
+    ~FDDefer() {    ::close(fd_); }    
+};
+
+class MembufDefer {
+    void* const buf_;
+
+public:
+    MembufDefer(void* buf) : buf_(buf) {}
+    ~MembufDefer() { ::free(buf_); }
+};
 
 class FsstUtils {
 public:
@@ -45,38 +63,38 @@ public:
 
 private:
     template<typename T>
-    static T htole(T val);
+    static inline T htole(T val);
 
     template<typename T>
-    static T letoh(T val);
+    static inline T letoh(T val);
 };
 
 template<>
-uint16_t FsstUtils::htole<uint16_t>(uint16_t val) {
+inline uint16_t FsstUtils::htole<uint16_t>(uint16_t val) {
     return htole16(val);
 }
 
 template<>
-uint16_t FsstUtils::letoh<uint16_t>(uint16_t val) {
+inline uint16_t FsstUtils::letoh<uint16_t>(uint16_t val) {
     return le16toh(val);
 }
 
 template<>
-uint32_t FsstUtils::htole<uint32_t>(uint32_t val) {
+inline uint32_t FsstUtils::htole<uint32_t>(uint32_t val) {
     return htole32(val);
 }
 
 template<>
-uint32_t FsstUtils::letoh<uint32_t>(uint32_t val) {
+inline uint32_t FsstUtils::letoh<uint32_t>(uint32_t val) {
     return le32toh(val);
 }
 
 template<>
-uint64_t FsstUtils::htole<uint64_t>(uint64_t val) {
+inline uint64_t FsstUtils::htole<uint64_t>(uint64_t val) {
     return htole64(val);
 }
 
 template<>
-uint64_t FsstUtils::letoh<uint64_t>(uint64_t val) {
+inline uint64_t FsstUtils::letoh<uint64_t>(uint64_t val) {
     return le64toh(val);
 }

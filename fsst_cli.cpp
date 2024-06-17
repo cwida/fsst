@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <vector>
 #include <sys/stat.h>
+#include "fsst_utils.hpp"
 
 static void print_usage() {
     fprintf(stderr, "Usage:\n"
@@ -18,6 +19,15 @@ static void print_usage() {
             "    fsst_tools -m encode -i <in_file> -o <out_encoded_file> [-d <in_dict_file>]\n"
             "    fsst_tools -m decode -i <in_file> -o <out_decoded_file> [-d <in_dict_file>]\n");
 }
+
+class FsstEncoderDefer {
+    fsst_encoder_t* const encoder_;
+public:
+    FsstEncoderDefer(fsst_encoder_t* encoder) : encoder_(encoder) {}
+    ~FsstEncoderDefer() {
+        fsst_destroy(encoder_);
+    }
+};
 
 /**
  * @title       writen()
@@ -93,23 +103,20 @@ static bool save_dict(const char* dict_file, fsst_encoder_t* encoder) {
         fprintf(stderr, "failed to export dictionary");
         return false;
     }
+    MembufDefer membuf_defer(dict_buf);
 
     int fd = ::open(dict_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd < 0) {
         perror(dict_file);
-        free(dict_buf);
         return false;
     }
+    FDDefer fd_defer(fd);
 
     if (writen(fd, dict_buf, dict_len) != dict_len) {
         perror("write");
-        free(dict_buf);
-        close(fd);
         return false;
     }
 
-    close(fd);
-    free(dict_buf);
     fprintf(stdout, "Dictionary written to %s\n", dict_file);
     return true;
 }
@@ -127,31 +134,28 @@ static fsst_encoder_t* load_dict(const char* dict_file) {
         perror(dict_file);
         return nullptr;
     }
+    FDDefer fd_defer(fd);
 
     struct stat st;
     if (fstat(fd, &st) < 0) {
         perror("fstat");
-        close(fd);
         return nullptr;
     }
 
     char* buf = (char *)malloc(st.st_size);
     if (buf == nullptr) {
         perror("malloc");
-        close(fd);
         return nullptr;
     }
+    MembufDefer membuf_defer(buf);
 
     ssize_t nread = readn(fd, buf, st.st_size);
-    close(fd);
     if (nread != st.st_size) {
         perror(dict_file);
-        free(buf);
         return nullptr;
     }
 
     fsst_encoder_t *encoder = fsst_encoder_import(buf, nread);
-    free(buf);
     if (encoder == nullptr) {
         fprintf(stderr, "failed to import dictionary");
         return nullptr;
@@ -162,6 +166,44 @@ static fsst_encoder_t* load_dict(const char* dict_file) {
 }
 
 /**
+ * @title       build_dict()
+ * @description train the dictionary from the input file
+ *
+ * @param fd             input file to train the dictionary
+ * @param train_max_len  maximum length of the training data
+ * @return fsst_encoder_t* on success, nullptr on error
+ */
+fsst_encoder_t *build_dict(int fd, size_t train_max_len) {
+    // read raw data
+    struct stat st;
+    if (fstat(fd, &st) < 0) {
+        perror("fstat");
+        return nullptr;
+    }
+
+    size_t raw_size = st.st_size;
+    if (train_max_len > 0 && raw_size > train_max_len) {
+        raw_size = train_max_len;
+    }
+    unsigned char* raw_buf = (unsigned char *)malloc(raw_size);
+    if (raw_buf == nullptr) {
+        fprintf(stderr, "malloc failed\n");
+        return nullptr;
+    }
+    MembufDefer membuf_defer(raw_buf);
+
+    if (readn(fd, raw_buf, raw_size) != raw_size) {
+        perror("read file");
+        return nullptr;
+    }
+
+    // train the dictionary
+    unsigned long lenIn[] = {raw_size};
+    const unsigned char *strIn[] = { (const unsigned char*)raw_buf};
+    return fsst_create(1, lenIn, strIn, 0);
+}
+
+/**
  * @title       fsst_train()
  * @description train the dictionary from the input file
  *
@@ -169,47 +211,23 @@ static fsst_encoder_t* load_dict(const char* dict_file) {
  * @param dict_file  output file to save the dictionary
  * @return true on success, false on error
  */
-bool fsst_train(const char* dict_file, const char* in_file) {
+static bool fsst_train(const char* dict_file, const char* in_file) {
     // Read the input file
     int fd = ::open(in_file, O_RDONLY);
     if (fd < 0) {
         perror(in_file);
         return false;
     }
+    FDDefer fd_defer(fd);
+
+    fsst_encoder_t* encoder = build_dict(fd, 0);
+    if (encoder == nullptr) {
+        return false;
+    }
+    FsstEncoderDefer encoder_defer(encoder);
     
-    // read raw data
-    struct stat st;
-    if (fstat(fd, &st) < 0) {
-        perror("fstat");
-        close(fd);
-        return false;
-    }
-
-    size_t raw_size = st.st_size; // std::min(st.st_size, (off_t)4096 * 32);
-    unsigned char* raw_buf = (unsigned char *)malloc(raw_size);
-    if (raw_buf == nullptr) {
-        fprintf(stderr, "malloc failed\n");
-        close(fd);
-        return false;
-    }
-
-    if (readn(fd, raw_buf, raw_size) != raw_size) {
-        perror("read file");
-        free(raw_buf);
-        close(fd);
-        return false;
-    }
-
-    // train the dictionary
-    unsigned long lenIn[] = {raw_size};
-    const unsigned char *strIn[] = { (const unsigned char*)raw_buf};
-    fsst_encoder_t *encoder = fsst_create(1, lenIn, strIn, 0);
-    free(raw_buf);
-
     // Write the dictionary to the output file
-    bool r = save_dict(dict_file, encoder);
-    fsst_destroy(encoder);
-    return r;
+    return save_dict(dict_file, encoder);
 }
 
 /**
@@ -221,60 +239,68 @@ bool fsst_train(const char* dict_file, const char* in_file) {
  * @param dict_file   input dictionary file, optional
  * @return true on success, false on error
  */
-bool fsst_encode(const char* in_file, const char* out_file, const char* dict_file) {
+static bool fsst_encode(const char* in_file, const char* out_file, const char* dict_file) {
     // load dictionary
     fsst_encoder_t *encoder = load_dict(dict_file);
     if ( encoder == nullptr ) {
         return false;
     }
+    FsstEncoderDefer encoder_defer(encoder);
 
     // open input and output files
     int ifd = ::open(in_file, O_RDONLY);
     if (ifd < 0) {
         perror(in_file);
-        fsst_destroy(encoder);
         return false;
     }
+    FDDefer ifd_defer(ifd);
 
     int ofd = ::open(out_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (ofd < 0) {
         perror(out_file);
-        close(ifd);
-        fsst_destroy(encoder);
+        return false;
+    }
+    FDDefer ofd_defer(ofd);
+
+    // read raw data
+    struct stat st;
+    if (fstat(ifd, &st) < 0) {
+        perror("fstat");
         return false;
     }
 
-    // read raw data and compress
-    ssize_t nread = 0;
-    unsigned char src_buf[4096];
-    unsigned char dst_buf[sizeof(src_buf) * 2];
+    size_t src_buf_size = st.st_size;
+    unsigned char *src_buf = (unsigned char *) malloc(src_buf_size);
+    MembufDefer src_membuf_defer(src_buf);
+    if (readn(ifd, src_buf, src_buf_size) != src_buf_size) {
+        perror("read file");
+        return false;
+    }
+    unsigned long src_len_array[] = { (unsigned long)src_buf_size };
+    const unsigned char* src_buf_array[] = { (const unsigned char *)src_buf };
 
-    bool success = true;
-    while ((nread = read(ifd, src_buf, sizeof(src_buf))) > 0) {
-        unsigned long src_len_array[] = { (unsigned long)nread };
-        const unsigned char* src_buf_array[] = { (const unsigned char *)src_buf };
+    // compress the data
+    size_t dst_buf_size = 8 + src_buf_size * 2;
+    unsigned char *dst_buf = (unsigned char *) malloc(dst_buf_size);
+    MembufDefer dst_membuf_defer(dst_buf);
 
-        unsigned long dst_len_array[] = { 0 };
-        unsigned char* dst_buf_array[] = { nullptr };
-        if (fsst_compress(encoder, 1, src_len_array, src_buf_array, sizeof(dst_buf), dst_buf, dst_len_array, dst_buf_array) < 1) {
-            fprintf(stderr, "failed to compress data\n");
-            success = false;
-            break;
-        }
+    unsigned long dst_len_array[] = { 0 };
+    unsigned char* dst_buf_array[] = { nullptr };
+    if(fsst_compress(encoder, 1, src_len_array, src_buf_array, dst_buf_size, dst_buf, dst_len_array, dst_buf_array) != 1) {
+        fprintf(stderr, "failed to compress data\n");
+        return false;
+    }
+    printf("Compressed %ld bytes to %ld bytes, ratio=%.2f.\n", 
+        src_len_array[0], dst_len_array[0], (double)dst_len_array[0] / src_len_array[0]);
 
-        if (writen(ofd, dst_buf_array[0], dst_len_array[0]) != dst_len_array[0]) {
-            perror("write");
-            success = false;
-            break;
-        }
+    // write the compressed data
+    if (writen(ofd, dst_buf_array[0], dst_len_array[0]) != dst_len_array[0]) {
+        perror("write");
+        return false;
     }
 
-    close(ifd);
-    close(ofd);
-    fsst_destroy(encoder);
-
-    printf("Data written to %s, succ=%d\n", out_file, success);
-    return success;
+    printf("Data written to %s\n", out_file);
+    return true;
 }
 
 int fsst_decode(const char* in_file, const char* out_file, const char* dict_file) {
@@ -292,35 +318,43 @@ int fsst_decode(const char* in_file, const char* out_file, const char* dict_file
         perror(in_file);
         return false;
     }
+    FDDefer fd_defer(ifd);
 
     int ofd = ::open(out_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (ofd < 0) {
         perror(out_file);
-        close(ifd);
+        return false;
+    }
+    FDDefer ofd_defer(ofd);
+
+    // read raw data
+    struct stat st;
+    if (fstat(ifd, &st) < 0) {
+        perror("fstat");
         return false;
     }
 
-    // read raw data and compress
-    ssize_t nread = 0;
-    unsigned char src_buf[4096];
-    unsigned char dst_buf[sizeof(src_buf) * 4];
-
-    bool success = true;
-    while ((nread = read(ifd, src_buf, sizeof(src_buf))) > 0) {
-        size_t decoded_size = fsst_decompress(&decoder, nread, src_buf, sizeof(dst_buf), dst_buf);
-        if (writen(ofd, dst_buf, decoded_size) != decoded_size) {
-            perror("write");
-            success = false;
-            break;
-        }
+    size_t src_buf_size = st.st_size;
+    unsigned char *src_buf = (unsigned char *) malloc(src_buf_size);
+    MembufDefer src_membuf_defer(src_buf);
+    if (readn(ifd, src_buf, src_buf_size) != src_buf_size) {
+        perror("read file");
+        return false;
     }
 
-    close(ifd);
-    close(ofd);
+    // decompress the data
+    size_t dst_buf_size = src_buf_size * 4; // one code to 4 characters at most
+    unsigned char *dst_buf = (unsigned char *) malloc(dst_buf_size);
+    MembufDefer dst_membuf_defer(dst_buf);
 
-    printf("Data written to %s, succ=%d\n", out_file, success);
-    return success;
+    size_t decoded_size = fsst_decompress(&decoder, src_buf_size, src_buf, dst_buf_size, dst_buf);
+    if (writen(ofd, dst_buf, decoded_size) != decoded_size) {
+        perror("write");
+        return false;
+    }
 
+    printf("Data written to %s\n", out_file);
+    return true;
 }
 
 int main(int argc, char** argv) {

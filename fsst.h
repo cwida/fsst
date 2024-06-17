@@ -125,6 +125,13 @@ fsst_decoder(
    fsst_encoder_t *encoder   
 );
 
+/* export hte encoder to memory buffer */
+char *fsst_encoder_export(fsst_encoder_t *encoder, size_t *out_len);
+// void fsst_encoder_dump(fsst_encoder_t *encoder);
+
+/* create a new fsst_encoder_t from the exported memory buffer */
+fsst_encoder_t *fsst_encoder_import(const char* buf, size_t len);
+
 /* Compress a batch of strings (on AVX512 machines best performance is obtained by compressing more than 32KB of string volume). */
 /* The output buffer must be large; at least "conservative space" (7+2*inputlength) for the first string for something to happen. */
 size_t                      /* OUT: the number of compressed strings (<=n) that fit the output buffer. */ 

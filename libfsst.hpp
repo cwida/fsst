@@ -100,6 +100,11 @@ struct Symbol {
 #define FSST_SHIFT 15
 #define FSST_HASH(w) (((w)*FSST_HASH_PRIME)^(((w)*FSST_HASH_PRIME)>>FSST_SHIFT))
    size_t hash() const { size_t v = 0xFFFFFF & val.num; return FSST_HASH(v); } // hash on the next 3 bytes
+
+   // return nullptr if the buffer is too small
+   char* exportTo(char* start, char* end) const;
+   // return nullptr if the buffer is too small
+   const char* importFrom(const char* start, const char* end);
 };
 
 // Symbol that can be put in a queue, ordered on gain
@@ -323,6 +328,11 @@ struct SymbolTable {
           if (hashTab[i].icl < FSST_ICL_FREE)
              hashTab[i] = symbols[newCode[(u8) hashTab[i].code()]];
    }
+
+   // return nullptr if the buffer is too small
+   char* exportTo(char* start, char* end) const;
+   // return nullptr if the buffer is too small
+   const char* importFrom(const char* start, const char* end);
 };
 
 #ifdef NONOPT_FSST

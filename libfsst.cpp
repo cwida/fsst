@@ -16,6 +16,7 @@
 //
 // You can contact the authors via the FSST source repository : https://github.com/cwida/fsst
 #include "libfsst.hpp"
+#include "fsst_utils.hpp"
 
 Symbol concat(Symbol a, Symbol b) {
    Symbol s;
@@ -24,6 +25,205 @@ Symbol concat(Symbol a, Symbol b) {
    s.set_code_len(FSST_CODE_MASK, length);
    s.val.num = (b.val.num << (8*a.length())) | a.val.num;
    return s;
+}
+
+char* Symbol::exportTo(char* start, char* end) const {
+   u16 code_and_len = (icl >> 16) & 0xFFFF;
+   if ((start = FsstUtils::export_value(start, end, code_and_len)) == nullptr) {
+      return nullptr;
+   }
+
+   u16 str_len = code_and_len >> 12;
+   assert(str_len <= maxLength);
+   for (int i=0; i<str_len; i++) {
+      if (start >= end) {
+         return nullptr;
+      }
+      *start++ = val.str[i];
+   }
+
+   return start;
+}
+
+const char* Symbol::importFrom(const char* start, const char* end) {
+   // read code and len
+   u16 code_and_len = 0;
+   if ((start = FsstUtils::import_value(start, end, code_and_len)) == nullptr) {
+      return nullptr;
+   }
+
+   u16 code = code_and_len & 0xFFF;
+   u16 str_len = code_and_len >> 12;
+   assert(str_len <= maxLength);
+   if (str_len > maxLength || start + str_len > end) {
+      return nullptr;
+   }
+
+   set_code_len(code, str_len);
+   for (int i=0; i<str_len; i++) {
+      val.str[i] = *start++;
+   }
+
+   return start;
+}
+
+static const char* FSST_MARK = "FSST";
+char* SymbolTable::exportTo(char* start, char* end) const {
+   // write fsst mark
+   int fsst_mark_len = strlen(FSST_MARK);
+   if (start + fsst_mark_len > end) {
+      return nullptr;
+   }
+   memcpy(start, FSST_MARK, fsst_mark_len);
+   start += fsst_mark_len;
+
+   // write version
+   u64 version = FSST_VERSION;
+   if ((start = FsstUtils::export_value(start, end, version)) == nullptr) {
+      return nullptr;
+   }
+
+   // write common fields
+   if ((start = FsstUtils::export_value(start, end, nSymbols)) == nullptr) {
+      return nullptr;
+   }
+   if ((start = FsstUtils::export_value(start, end, suffixLim)) == nullptr) {
+      return nullptr;
+   }
+   if ((start = FsstUtils::export_value(start, end, terminator)) == nullptr) {
+      return nullptr;
+   }
+   u16 zero_terminated = zeroTerminated;
+   if ((start = FsstUtils::export_value(start, end, zero_terminated)) == nullptr) {
+      return nullptr;
+   }
+
+   // shortCodes
+   for(size_t n=0; n<sizeof(shortCodes)/sizeof(shortCodes[0]); n++) {
+      if ((start = FsstUtils::export_value(start, end, shortCodes[n])) == nullptr) {
+         return nullptr;
+      }
+   }
+
+   // lenHisto
+   for(size_t n=0; n<sizeof(lenHisto)/sizeof(lenHisto[0]); n++) {
+      if ((start = FsstUtils::export_value(start, end, lenHisto[n])) == nullptr) {
+         return nullptr;
+      }
+   }
+
+   // hashTab
+   u32 hashItems = 0;
+   for(u32 n=0; n<sizeof(hashTab)/sizeof(hashTab[0]); n++) {
+      if (hashTab[n].icl != FSST_ICL_FREE) {
+         hashItems++;
+      }
+   }
+   if ((start = FsstUtils::export_value(start, end, hashItems)) == nullptr) {
+      return nullptr;
+   }
+
+   for(u32 n=0; n<sizeof(hashTab)/sizeof(hashTab[0]); n++) {
+      const Symbol& s = hashTab[n];
+      if (s.icl != FSST_ICL_FREE) {
+         if ((start = FsstUtils::export_value(start, end, n)) == nullptr) {
+            return nullptr;
+         }
+         if ((start = hashTab[n].exportTo(start, end)) == nullptr) {
+            return nullptr;
+         }
+      }
+   }
+
+   // symbols
+   assert(FSST_CODE_BASE + nSymbols < sizeof(symbols)/sizeof(symbols[0]));
+   for(u32 n=0; n<FSST_CODE_BASE+nSymbols; n++) {
+      if ((start = symbols[n].exportTo(start, end)) == nullptr) {
+         return nullptr;
+      }
+   }
+
+   return start;
+}
+
+const char* SymbolTable::importFrom(const char* start, const char* end) {
+   // read fsst mark
+   int fsst_mark_len = strlen(FSST_MARK);
+   if (start + fsst_mark_len > end) {
+      return nullptr;
+   }
+   if (memcmp(start, FSST_MARK, fsst_mark_len) != 0) {
+      perror("Invalid FSST mark");
+      return nullptr;
+   }
+   start += fsst_mark_len;
+
+
+   // read version
+   u64 version = 0;
+   if ((start = FsstUtils::import_value(start, end, version)) == nullptr) {
+      return nullptr;
+   }
+   if (version != FSST_VERSION) {
+      perror("FSST version mismatched");
+      return nullptr;
+   }
+
+   // read common fields
+   if ((start = FsstUtils::import_value(start, end, nSymbols)) == nullptr) {
+      return nullptr;
+   }
+   if ((start = FsstUtils::import_value(start, end, suffixLim)) == nullptr) {
+      return nullptr;
+   }
+   if ((start = FsstUtils::import_value(start, end, terminator)) == nullptr) {
+      return nullptr;
+   }
+   u16 zero_terminated = 0;
+   if ((start = FsstUtils::import_value(start, end, zero_terminated)) == nullptr) {
+      return nullptr;
+   }
+   zeroTerminated = zero_terminated;
+
+
+   // shortCodes
+   for(size_t n=0; n<sizeof(shortCodes)/sizeof(shortCodes[0]); n++) {
+      if ((start = FsstUtils::import_value(start, end, shortCodes[n])) == nullptr) {
+         return nullptr;
+      }
+   }
+
+   // lenHisto
+   for(size_t n=0; n<sizeof(lenHisto)/sizeof(lenHisto[0]); n++) {
+      if ((start = FsstUtils::import_value(start, end, lenHisto[n])) == nullptr) {
+         return nullptr;
+      }
+   }
+
+   // hashTab
+   u32 hashItems = 0;
+   if ((start = FsstUtils::import_value(start, end, hashItems)) == nullptr) {
+      return nullptr;
+   }
+   for(u32 n=0; n<hashItems; n++) {
+      u32 hashIdx;
+      if ((start = FsstUtils::import_value(start, end, hashIdx)) == nullptr) {
+         return nullptr;
+      }
+      if ((start = hashTab[hashIdx].importFrom(start, end)) == nullptr) {
+         return nullptr;
+      }
+   }
+
+   // symbols
+   assert(FSST_CODE_BASE + nSymbols < sizeof(symbols)/sizeof(symbols[0]));
+   for(u32 n=0; n<FSST_CODE_BASE+nSymbols; n++) {
+      if ((start = symbols[n].importFrom(start, end)) == nullptr) {
+         return nullptr;
+      }
+   }
+
+   return start;
 }
 
 namespace std {
@@ -585,6 +785,63 @@ extern "C" u32 fsst_import(fsst_decoder_t *decoder, u8 *buf) {
        decoder->len[code++] = 8;
    }
    return pos;
+}
+
+/* export hte encoder to memory buffer */
+extern "C" char *fsst_encoder_export(fsst_encoder_t *encoder, size_t *out_len) {
+
+   Encoder *e = (Encoder*) encoder;
+   char *start = (char *)malloc(sizeof(SymbolTable));
+   char *end = e->symbolTable->exportTo(start, start + sizeof(SymbolTable));
+   if (end != nullptr) {
+      *out_len = end - start;
+      return start;
+   } else {
+      free(start);
+      return nullptr;
+   }
+}
+
+void fsst_encoder_dump(fsst_encoder_t *encoder) {
+   Encoder *e = (Encoder*) encoder;
+   struct SymbolTable* t = e->symbolTable.get();
+
+   printf("nSymbols: %d\n", t->nSymbols);
+   printf("suffixLim: %d\n", t->suffixLim);
+   printf("terminator: %d\n", t->terminator);
+   printf("zeroTerminated: %d\n", t->zeroTerminated);
+
+   int hashTabSize = 0;
+   for(int n=0; n<sizeof(t->hashTab)/sizeof(t->hashTab[0]); n++) {
+      Symbol& s = t->hashTab[n];
+      if (s.icl != FSST_ICL_FREE) {
+         hashTabSize++;
+         // printf("  %d: \tic=%llx, v=%llx, len=%d, code=%d\n", n, s.icl, s.val.num, s.length(), s.code());
+      }
+   }
+   printf("hashTab: size=%d\n", hashTabSize);
+
+   printf("symbols: size=%lu\n", sizeof(t->symbols)/sizeof(t->symbols[0]));
+   // for(int n=0; n<sizeof(t->symbols)/sizeof(t->symbols[0]); n++) {
+   //    Symbol& s = t->symbols[n];
+   //    printf("  %d: \tic=%llx, v=%llx, len=%d, code=%d\n", n, s.icl, s.val.num, s.length(), s.code());
+   // }
+}
+
+
+/* create a new fsst_encoder_t from the exported memory buffer */
+fsst_encoder_t *fsst_encoder_import(const char* start, size_t len) {
+   Encoder *encoder = new Encoder();
+   bzero(encoder->simdbuf, sizeof(encoder->simdbuf));
+   encoder->symbolTable = std::make_shared<SymbolTable>();
+
+   const char* end = encoder->symbolTable->importFrom(start, start + len);
+   if (end == nullptr) {
+      delete encoder;
+      return nullptr;
+   } else {
+      return (fsst_encoder_t*) encoder;
+   }
 }
 
 // runtime check for simd

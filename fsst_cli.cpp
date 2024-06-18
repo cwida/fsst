@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <vector>
+#include <algorithm>
 #include <sys/stat.h>
 #include "fsst_utils.hpp"
 
@@ -44,7 +45,7 @@ static ssize_t writen(int fd, void *buf, size_t n) {
     char *ptr = (char *)buf;
 
     while (nleft > 0) {
-        if ((nwrite = write(fd, ptr, nleft)) < 0) {
+        if ((nwrite = write(fd, ptr, std::min(nleft, (ssize_t)0x7ffff000))) < 0) {
             if (errno == EINTR) {
                 nwrite = 0;
             } else {
@@ -72,7 +73,7 @@ static ssize_t readn(int fd, void *buf, size_t n) {
     char *ptr = (char *)buf;
 
     while (nleft > 0) {
-        if ((nread = read(fd, ptr, nleft)) < 0) {
+        if ((nread = ::read(fd, ptr, std::min(nleft, (ssize_t)0x7ffff000))) < 0) {
             if (errno == EINTR) {
                 nread = 0;
             } else {

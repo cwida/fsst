@@ -49,4 +49,10 @@ set_target_properties(binary12 PROPERTIES COMPILE_FLAGS -DFSST12)
 
 add_executable(fsst_cli fsst_cli.cpp)
 target_link_libraries (fsst_cli LINK_PUBLIC fsst)
+set_target_properties(binary12 PROPERTIES OUTPUT_NAME fsst_cli)
 set_target_properties(fsst_cli PROPERTIES COMPILE_FLAGS -DFSST)
+
+add_executable(fsst_cli12 fsst_cli.cpp)
+target_link_libraries (fsst_cli12 LINK_PUBLIC fsst12)
+set_target_properties(binary12 PROPERTIES OUTPUT_NAME fsst_cli12)
+set_target_properties(fsst_cli12 PROPERTIES COMPILE_FLAGS -DFSST12)

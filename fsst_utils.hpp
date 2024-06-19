@@ -4,6 +4,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <string>
+#include <string_view>
+
 #if defined(__linux__) || defined(__CYGWIN__)
 
 #include <endian.h>
@@ -40,24 +43,20 @@ public:
 class FsstUtils {
 public:
     template<typename T>
-    static char* export_value(char* start, char* end, T val) {
-        if (start + sizeof(val) < end) {
-            val = htole(val);
-            memcpy(start, &val, sizeof(val));
-            return start + sizeof(val);
-        } else {
-            return nullptr;
-        }
+    static void serialize(std::string& b, T val) {
+        val = htole(val);
+        b.append((const char*)&val, sizeof(val));
     }
 
     template<typename T>
-    static const char* import_value(const char* start, const char* end, T& val) {
-        if (start + sizeof(val) < end) {
-            memcpy(&val, start, sizeof(val));
+    static bool deserialize(std::string_view& b, T& val) {
+        if (b.size() >= sizeof(val)) {
+            memcpy(&val, b.data(), sizeof(val));
+            b.remove_prefix(sizeof(val));
             val = letoh(val);
-            return start + sizeof(val);
+            return true;
         } else {
-            return nullptr;
+            return false;
         }
     }
 
@@ -68,6 +67,16 @@ private:
     template<typename T>
     static inline T letoh(T val);
 };
+
+template<>
+inline uint8_t FsstUtils::htole<uint8_t>(uint8_t val) {
+    return val;
+}
+
+template<>
+inline uint8_t FsstUtils::letoh<uint8_t>(uint8_t val) {
+    return val;
+}
 
 template<>
 inline uint16_t FsstUtils::htole<uint16_t>(uint16_t val) {

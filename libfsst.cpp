@@ -27,203 +27,219 @@ Symbol concat(Symbol a, Symbol b) {
    return s;
 }
 
-char* Symbol::exportTo(char* start, char* end) const {
+void Symbol::serialize(std::string& b) const {
    u16 code_and_len = (icl >> 16) & 0xFFFF;
-   if ((start = FsstUtils::export_value(start, end, code_and_len)) == nullptr) {
-      return nullptr;
-   }
+   FsstUtils::serialize(b, code_and_len);
 
    u16 str_len = code_and_len >> 12;
    assert(str_len <= maxLength);
    for (int i=0; i<str_len; i++) {
-      if (start >= end) {
-         return nullptr;
-      }
-      *start++ = val.str[i];
+      b.push_back(val.str[i]);
    }
-
-   return start;
 }
 
-const char* Symbol::importFrom(const char* start, const char* end) {
+bool Symbol::deserialize(std::string_view& b) {
    // read code and len
    u16 code_and_len = 0;
-   if ((start = FsstUtils::import_value(start, end, code_and_len)) == nullptr) {
-      return nullptr;
+   if ((!FsstUtils::deserialize(b, code_and_len))) {
+      return false;
    }
 
    u16 code = code_and_len & 0xFFF;
    u16 str_len = code_and_len >> 12;
    assert(str_len <= maxLength);
-   if (str_len > maxLength || start + str_len > end) {
-      return nullptr;
+   if (str_len > maxLength || b.size() < str_len) {
+      return false;
    }
 
+   // read string
    set_code_len(code, str_len);
    for (int i=0; i<str_len; i++) {
-      val.str[i] = *start++;
+      val.str[i] = b[i];
    }
+   b.remove_prefix(str_len);
 
-   return start;
+   return true;
 }
 
-static const char* FSST_MARK = "FSST";
-char* SymbolTable::exportTo(char* start, char* end) const {
+static const char FSST_MARK[] = {'F','S','S','T','0','8'};
+void SymbolTable::serialize(std::string& b) const {
    // write fsst mark
-   int fsst_mark_len = strlen(FSST_MARK);
-   if (start + fsst_mark_len > end) {
-      return nullptr;
-   }
-   memcpy(start, FSST_MARK, fsst_mark_len);
-   start += fsst_mark_len;
+   b.append(FSST_MARK, sizeof(FSST_MARK));
 
    // write version
    u64 version = FSST_VERSION;
-   if ((start = FsstUtils::export_value(start, end, version)) == nullptr) {
-      return nullptr;
-   }
+   FsstUtils::serialize(b, version);
 
    // write common fields
-   if ((start = FsstUtils::export_value(start, end, nSymbols)) == nullptr) {
-      return nullptr;
-   }
-   if ((start = FsstUtils::export_value(start, end, suffixLim)) == nullptr) {
-      return nullptr;
-   }
-   if ((start = FsstUtils::export_value(start, end, terminator)) == nullptr) {
-      return nullptr;
-   }
-   u16 zero_terminated = zeroTerminated;
-   if ((start = FsstUtils::export_value(start, end, zero_terminated)) == nullptr) {
-      return nullptr;
-   }
+   FsstUtils::serialize(b, nSymbols);
+   FsstUtils::serialize(b, suffixLim);
+   FsstUtils::serialize(b, terminator);
+   FsstUtils::serialize(b, (u8)zeroTerminated);
 
    // shortCodes
-   for(size_t n=0; n<sizeof(shortCodes)/sizeof(shortCodes[0]); n++) {
-      if ((start = FsstUtils::export_value(start, end, shortCodes[n])) == nullptr) {
-         return nullptr;
-      }
+   u32 shortCodesNum = sizeof(shortCodes)/sizeof(shortCodes[0]);
+   FsstUtils::serialize(b, shortCodesNum);
+   for(size_t n=0; n<shortCodesNum; n++) {
+      FsstUtils::serialize(b, shortCodes[n]);
    }
 
    // lenHisto
-   for(size_t n=0; n<sizeof(lenHisto)/sizeof(lenHisto[0]); n++) {
-      if ((start = FsstUtils::export_value(start, end, lenHisto[n])) == nullptr) {
-         return nullptr;
-      }
+   u32 lenHistoNum = sizeof(lenHisto)/sizeof(lenHisto[0]);
+   FsstUtils::serialize(b, lenHistoNum);
+   for(size_t n=0; n<lenHistoNum; n++) {
+      FsstUtils::serialize(b, lenHisto[n]);
    }
 
    // hashTab
-   u32 hashItems = 0;
+   u32 hashTableNum = 0;
    for(u32 n=0; n<sizeof(hashTab)/sizeof(hashTab[0]); n++) {
       if (hashTab[n].icl != FSST_ICL_FREE) {
-         hashItems++;
+         hashTableNum++;
       }
    }
-   if ((start = FsstUtils::export_value(start, end, hashItems)) == nullptr) {
-      return nullptr;
-   }
+   FsstUtils::serialize(b, hashTableNum);
 
    for(u32 n=0; n<sizeof(hashTab)/sizeof(hashTab[0]); n++) {
       const Symbol& s = hashTab[n];
       if (s.icl != FSST_ICL_FREE) {
-         if ((start = FsstUtils::export_value(start, end, n)) == nullptr) {
-            return nullptr;
-         }
-         if ((start = hashTab[n].exportTo(start, end)) == nullptr) {
-            return nullptr;
-         }
+         FsstUtils::serialize(b, n);
+         s.serialize(b);
       }
    }
 
    // symbols
-   assert(FSST_CODE_BASE + nSymbols < sizeof(symbols)/sizeof(symbols[0]));
-   for(u32 n=0; n<FSST_CODE_BASE+nSymbols; n++) {
-      if ((start = symbols[n].exportTo(start, end)) == nullptr) {
-         return nullptr;
-      }
+   u32 symbolNum = FSST_CODE_BASE + nSymbols;
+   assert(symbolNum < sizeof(symbols)/sizeof(symbols[0]));
+   FsstUtils::serialize(b, symbolNum);
+   for(u32 n=0; n<symbolNum; n++) {
+      symbols[n].serialize(b);
    }
 
-   return start;
+   return;
 }
 
-const char* SymbolTable::importFrom(const char* start, const char* end) {
+bool SymbolTable::deserialize(std::string_view& b) {
    // read fsst mark
-   int fsst_mark_len = strlen(FSST_MARK);
-   if (start + fsst_mark_len > end) {
-      return nullptr;
+   if (b.size() < sizeof(FSST_MARK)) {
+      fprintf(stderr, "Failed to read FSST_MARK\n");
+      return false;
    }
-   if (memcmp(start, FSST_MARK, fsst_mark_len) != 0) {
-      perror("Invalid FSST mark");
-      return nullptr;
+   if (memcmp(b.data(), FSST_MARK, sizeof(FSST_MARK)) != 0) {
+      fprintf(stderr, "Invalid FSST mark\n");
+      return false;
    }
-   start += fsst_mark_len;
-
+   b.remove_prefix(sizeof(FSST_MARK));
 
    // read version
    u64 version = 0;
-   if ((start = FsstUtils::import_value(start, end, version)) == nullptr) {
-      return nullptr;
+   if (!FsstUtils::deserialize(b, version)) {
+      fprintf(stderr, "Failed to read version\n");
+      return false;
    }
    if (version != FSST_VERSION) {
-      perror("FSST version mismatched");
-      return nullptr;
+      fprintf(stderr, "FSST version mismatched\n");
+      return false;
    }
 
    // read common fields
-   if ((start = FsstUtils::import_value(start, end, nSymbols)) == nullptr) {
-      return nullptr;
+   if (!FsstUtils::deserialize(b, nSymbols)) {
+      fprintf(stderr, "Failed to read nSymbols\n");
+      return false;
    }
-   if ((start = FsstUtils::import_value(start, end, suffixLim)) == nullptr) {
-      return nullptr;
+   if (!FsstUtils::deserialize(b, suffixLim)) {
+      fprintf(stderr, "Failed to read suffixLim\n");
+      return false;
    }
-   if ((start = FsstUtils::import_value(start, end, terminator)) == nullptr) {
-      return nullptr;
+   if (!FsstUtils::deserialize(b, terminator)) {
+      fprintf(stderr, "Failed to read terminator\n");
+      return false;
    }
-   u16 zero_terminated = 0;
-   if ((start = FsstUtils::import_value(start, end, zero_terminated)) == nullptr) {
-      return nullptr;
+
+   u8 zero_terminated = 0;
+   if (!FsstUtils::deserialize(b, zero_terminated)) {
+      fprintf(stderr, "Failed to read zero_terminated\n");
+      return false;
    }
    zeroTerminated = zero_terminated;
 
-
    // shortCodes
-   for(size_t n=0; n<sizeof(shortCodes)/sizeof(shortCodes[0]); n++) {
-      if ((start = FsstUtils::import_value(start, end, shortCodes[n])) == nullptr) {
-         return nullptr;
+   u32 shortCodesNum = 0;
+   if (!FsstUtils::deserialize(b, shortCodesNum)) {
+      fprintf(stderr, "Failed to read shortCodesNum\n");
+      return false;
+   }
+   if (shortCodesNum != sizeof(shortCodes)/sizeof(shortCodes[0])) {
+      fprintf(stderr, "shortCodesNum mismatched\n");
+      return false;
+   }
+   for(size_t n=0; n<shortCodesNum; n++) {
+      if (!FsstUtils::deserialize(b, shortCodes[n])) {
+         fprintf(stderr, "Failed to read shortCodes[%d]\n", (int)n);
+         return false;
       }
    }
 
    // lenHisto
-   for(size_t n=0; n<sizeof(lenHisto)/sizeof(lenHisto[0]); n++) {
-      if ((start = FsstUtils::import_value(start, end, lenHisto[n])) == nullptr) {
-         return nullptr;
+   u32 lenHistoNum = 0;
+   if (!FsstUtils::deserialize(b, lenHistoNum)) {
+      fprintf(stderr, "Failed to read lenHistoNum\n");
+      return false;
+   }
+   if (lenHistoNum != sizeof(lenHisto)/sizeof(lenHisto[0])) {
+      fprintf(stderr, "lenHistoNum mismatched\n");
+      return false;
+   }
+   for(size_t n=0; n<lenHistoNum; n++) {
+      if (!FsstUtils::deserialize(b, lenHisto[n])) {
+         fprintf(stderr, "Failed to read lenHisto[%d]\n", (int)n);
+         return false;
       }
    }
 
    // hashTab
-   u32 hashItems = 0;
-   if ((start = FsstUtils::import_value(start, end, hashItems)) == nullptr) {
-      return nullptr;
+   u32 hashTableNum = 0;
+   if (!FsstUtils::deserialize(b, hashTableNum)) {
+      fprintf(stderr, "Failed to read hashTableNum\n");
+      return false;
    }
-   for(u32 n=0; n<hashItems; n++) {
+   if (hashTableNum > sizeof(hashTab)/sizeof(hashTab[0])) {
+      fprintf(stderr, "hashTableNum mismatched\n");
+      return false;
+   }
+   for(u32 n=0; n<hashTableNum; n++) {
       u32 hashIdx;
-      if ((start = FsstUtils::import_value(start, end, hashIdx)) == nullptr) {
-         return nullptr;
+      if (!FsstUtils::deserialize(b, hashIdx)) {
+         fprintf(stderr, "Failed to read hashIdx, n=%d\n", n);
+         return false;
       }
-      if ((start = hashTab[hashIdx].importFrom(start, end)) == nullptr) {
-         return nullptr;
+      if (hashIdx >= sizeof(hashTab)/sizeof(hashTab[0])) {
+         fprintf(stderr, "hashIdx out of range\n");
+         return false;
+      }
+      if (!hashTab[hashIdx].deserialize(b)) {
+         fprintf(stderr, "Failed to read hashTab[%d]\n", hashIdx);
       }
    }
 
    // symbols
-   assert(FSST_CODE_BASE + nSymbols < sizeof(symbols)/sizeof(symbols[0]));
-   for(u32 n=0; n<FSST_CODE_BASE+nSymbols; n++) {
-      if ((start = symbols[n].importFrom(start, end)) == nullptr) {
-         return nullptr;
+   u32 symbolNum = 0;
+   if (!FsstUtils::deserialize(b, symbolNum)) {
+      fprintf(stderr, "Failed to read symbolNum\n");
+      return false;
+   }
+   if (symbolNum != FSST_CODE_BASE + nSymbols) {
+      fprintf(stderr, "symbolNum mismatched\n");
+      return false;
+   }
+   for(u32 n=0; n<symbolNum; n++) {
+      if (!symbols[n].deserialize(b)) {
+         fprintf(stderr, "Failed to read symbols[%d]\n", n);
+         return false;
       }
    }
 
-   return start;
+   return true;
 }
 
 namespace std {
@@ -787,63 +803,6 @@ extern "C" u32 fsst_import(fsst_decoder_t *decoder, u8 *buf) {
    return pos;
 }
 
-/* export hte encoder to memory buffer */
-extern "C" char *fsst_encoder_export(fsst_encoder_t *encoder, size_t *out_len) {
-
-   Encoder *e = (Encoder*) encoder;
-   char *start = (char *)malloc(sizeof(SymbolTable));
-   char *end = e->symbolTable->exportTo(start, start + sizeof(SymbolTable));
-   if (end != nullptr) {
-      *out_len = end - start;
-      return start;
-   } else {
-      free(start);
-      return nullptr;
-   }
-}
-
-void fsst_encoder_dump(fsst_encoder_t *encoder) {
-   Encoder *e = (Encoder*) encoder;
-   struct SymbolTable* t = e->symbolTable.get();
-
-   printf("nSymbols: %d\n", t->nSymbols);
-   printf("suffixLim: %d\n", t->suffixLim);
-   printf("terminator: %d\n", t->terminator);
-   printf("zeroTerminated: %d\n", t->zeroTerminated);
-
-   int hashTabSize = 0;
-   for(int n=0; n<sizeof(t->hashTab)/sizeof(t->hashTab[0]); n++) {
-      Symbol& s = t->hashTab[n];
-      if (s.icl != FSST_ICL_FREE) {
-         hashTabSize++;
-         // printf("  %d: \tic=%llx, v=%llx, len=%d, code=%d\n", n, s.icl, s.val.num, s.length(), s.code());
-      }
-   }
-   printf("hashTab: size=%d\n", hashTabSize);
-
-   printf("symbols: size=%lu\n", sizeof(t->symbols)/sizeof(t->symbols[0]));
-   // for(int n=0; n<sizeof(t->symbols)/sizeof(t->symbols[0]); n++) {
-   //    Symbol& s = t->symbols[n];
-   //    printf("  %d: \tic=%llx, v=%llx, len=%d, code=%d\n", n, s.icl, s.val.num, s.length(), s.code());
-   // }
-}
-
-
-/* create a new fsst_encoder_t from the exported memory buffer */
-fsst_encoder_t *fsst_encoder_import(const char* start, size_t len) {
-   Encoder *encoder = new Encoder();
-   bzero(encoder->simdbuf, sizeof(encoder->simdbuf));
-   encoder->symbolTable = std::make_shared<SymbolTable>();
-
-   const char* end = encoder->symbolTable->importFrom(start, start + len);
-   if (end == nullptr) {
-      delete encoder;
-      return nullptr;
-   } else {
-      return (fsst_encoder_t*) encoder;
-   }
-}
-
 // runtime check for simd
 inline size_t _compressImpl(Encoder *e, size_t nlines, const size_t lenIn[], const u8 *strIn[], size_t size, u8 *output, size_t *lenOut, u8 *strOut[], bool noSuffixOpt, bool avoidBranch, int simd) {
 #ifndef NONOPT_FSST
@@ -895,4 +854,30 @@ extern "C" fsst_decoder_t fsst_decoder(fsst_encoder_t *encoder) {
    u32 cnt2 = fsst_import(&decoder, buf);
    assert(cnt1 == cnt2); (void) cnt1; (void) cnt2; 
    return decoder;
+}
+
+/* export hte encoder to memory buffer */
+extern "C" char *fsst_encoder_export(fsst_encoder_t *encoder, size_t *out_len) {
+   Encoder *e = (Encoder*) encoder;
+   std::string b;
+   e->symbolTable->serialize(b);
+
+   char *start = (char*) malloc(b.size());
+   *out_len = b.size();
+   memcpy(start, b.c_str(), b.size());
+   return start;
+}
+
+/* create a new fsst_encoder_t from the exported memory buffer */
+extern "C" fsst_encoder_t *fsst_encoder_import(const char* start, size_t len) {
+   Encoder *encoder = new Encoder();
+   encoder->symbolTable = std::make_shared<SymbolTable>();
+
+   std::string_view sv(start, len);
+   if (!encoder->symbolTable->deserialize(sv)) {
+      delete encoder;
+      return nullptr;
+   } else {
+      return (fsst_encoder_t*) encoder;
+   }
 }

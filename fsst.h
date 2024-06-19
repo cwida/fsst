@@ -127,7 +127,6 @@ fsst_decoder(
 
 /* export hte encoder to memory buffer */
 char *fsst_encoder_export(fsst_encoder_t *encoder, size_t *out_len);
-// void fsst_encoder_dump(fsst_encoder_t *encoder);
 
 /* create a new fsst_encoder_t from the exported memory buffer */
 fsst_encoder_t *fsst_encoder_import(const char* buf, size_t len);

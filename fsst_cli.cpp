@@ -16,9 +16,9 @@
 
 static void print_usage() {
     fprintf(stderr, "Usage:\n"
-            "    fsst_tools -m train -i <in_file> -d <out_dict_file>\n"
-            "    fsst_tools -m encode -i <in_file> -o <out_encoded_file> [-d <in_dict_file>]\n"
-            "    fsst_tools -m decode -i <in_file> -o <out_decoded_file> [-d <in_dict_file>]\n");
+            "    fsst_cli -m train -i <in_file> -d <out_dict_file>\n"
+            "    fsst_cli -m encode -i <in_file> -o <out_encoded_file> [-d <in_dict_file>]\n"
+            "    fsst_cli -m decode -i <in_file> -o <out_decoded_file> [-d <in_dict_file>]\n");
 }
 
 class FsstEncoderDefer {
@@ -158,7 +158,7 @@ static fsst_encoder_t* load_dict(const char* dict_file) {
 
     fsst_encoder_t *encoder = fsst_encoder_import(buf, nread);
     if (encoder == nullptr) {
-        fprintf(stderr, "failed to import dictionary");
+        fprintf(stderr, "failed to import dictionary\n");
         return nullptr;
     }
 

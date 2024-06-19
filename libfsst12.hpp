@@ -100,6 +100,9 @@ struct Symbol {
    ulong hash() const { uint v0 = 0xFFFFFFFF & *(ulong*) symbol; return FSST_HASH(v0); }
 
    bool operator==(const Symbol& other) const { return *(u64*) symbol == *(u64*) other.symbol && length() == other.length(); }
+
+   void serialize(std::string& b) const;
+   bool deserialize(std::string_view& b);
 };
 
 // during search for the best dictionary, we probe both (in this order, first wins):  
@@ -204,6 +207,9 @@ struct SymbolMap {
       u16 ret = hashFind(s);
       return ret?ret:shortCodes[s.first2()];
    }
+
+   void serialize(std::string& b) const;
+   bool deserialize(std::string_view& b);
 };
 
 

@@ -16,6 +16,7 @@
 //
 // You can contact the authors via the FSST source repository : https://github.com/cwida/fsst
 #include "libfsst.hpp"
+#include "fsst_utils.hpp"
 
 Symbol concat(Symbol a, Symbol b) {
    Symbol s;
@@ -24,6 +25,221 @@ Symbol concat(Symbol a, Symbol b) {
    s.set_code_len(FSST_CODE_MASK, length);
    s.val.num = (b.val.num << (8*a.length())) | a.val.num;
    return s;
+}
+
+void Symbol::serialize(std::string& b) const {
+   u16 code_and_len = (icl >> 16) & 0xFFFF;
+   FsstUtils::serialize(b, code_and_len);
+
+   u16 str_len = code_and_len >> 12;
+   assert(str_len <= maxLength);
+   for (int i=0; i<str_len; i++) {
+      b.push_back(val.str[i]);
+   }
+}
+
+bool Symbol::deserialize(std::string_view& b) {
+   // read code and len
+   u16 code_and_len = 0;
+   if ((!FsstUtils::deserialize(b, code_and_len))) {
+      return false;
+   }
+
+   u16 code = code_and_len & 0xFFF;
+   u16 str_len = code_and_len >> 12;
+   assert(str_len <= maxLength);
+   if (str_len > maxLength || b.size() < str_len) {
+      return false;
+   }
+
+   // read string
+   set_code_len(code, str_len);
+   for (int i=0; i<str_len; i++) {
+      val.str[i] = b[i];
+   }
+   b.remove_prefix(str_len);
+
+   return true;
+}
+
+static const char FSST_MARK[] = {'F','S','S','T','0','8'};
+void SymbolTable::serialize(std::string& b) const {
+   // write fsst mark
+   b.append(FSST_MARK, sizeof(FSST_MARK));
+
+   // write version
+   u64 version = FSST_VERSION;
+   FsstUtils::serialize(b, version);
+
+   // write common fields
+   FsstUtils::serialize(b, nSymbols);
+   FsstUtils::serialize(b, suffixLim);
+   FsstUtils::serialize(b, terminator);
+   FsstUtils::serialize(b, (u8)zeroTerminated);
+
+   // shortCodes
+   u32 shortCodesNum = sizeof(shortCodes)/sizeof(shortCodes[0]);
+   FsstUtils::serialize(b, shortCodesNum);
+   for(size_t n=0; n<shortCodesNum; n++) {
+      FsstUtils::serialize(b, shortCodes[n]);
+   }
+
+   // lenHisto
+   u32 lenHistoNum = sizeof(lenHisto)/sizeof(lenHisto[0]);
+   FsstUtils::serialize(b, lenHistoNum);
+   for(size_t n=0; n<lenHistoNum; n++) {
+      FsstUtils::serialize(b, lenHisto[n]);
+   }
+
+   // hashTab
+   u32 hashTableNum = 0;
+   for(u32 n=0; n<sizeof(hashTab)/sizeof(hashTab[0]); n++) {
+      if (hashTab[n].icl != FSST_ICL_FREE) {
+         hashTableNum++;
+      }
+   }
+   FsstUtils::serialize(b, hashTableNum);
+
+   for(u32 n=0; n<sizeof(hashTab)/sizeof(hashTab[0]); n++) {
+      const Symbol& s = hashTab[n];
+      if (s.icl != FSST_ICL_FREE) {
+         FsstUtils::serialize(b, n);
+         s.serialize(b);
+      }
+   }
+
+   // symbols
+   u32 symbolNum = FSST_CODE_BASE + nSymbols;
+   assert(symbolNum < sizeof(symbols)/sizeof(symbols[0]));
+   FsstUtils::serialize(b, symbolNum);
+   for(u32 n=0; n<symbolNum; n++) {
+      symbols[n].serialize(b);
+   }
+
+   return;
+}
+
+bool SymbolTable::deserialize(std::string_view& b) {
+   // read fsst mark
+   if (b.size() < sizeof(FSST_MARK)) {
+      fprintf(stderr, "Failed to read FSST_MARK\n");
+      return false;
+   }
+   if (memcmp(b.data(), FSST_MARK, sizeof(FSST_MARK)) != 0) {
+      fprintf(stderr, "Invalid FSST mark\n");
+      return false;
+   }
+   b.remove_prefix(sizeof(FSST_MARK));
+
+   // read version
+   u64 version = 0;
+   if (!FsstUtils::deserialize(b, version)) {
+      fprintf(stderr, "Failed to read version\n");
+      return false;
+   }
+   if (version != FSST_VERSION) {
+      fprintf(stderr, "FSST version mismatched\n");
+      return false;
+   }
+
+   // read common fields
+   if (!FsstUtils::deserialize(b, nSymbols)) {
+      fprintf(stderr, "Failed to read nSymbols\n");
+      return false;
+   }
+   if (!FsstUtils::deserialize(b, suffixLim)) {
+      fprintf(stderr, "Failed to read suffixLim\n");
+      return false;
+   }
+   if (!FsstUtils::deserialize(b, terminator)) {
+      fprintf(stderr, "Failed to read terminator\n");
+      return false;
+   }
+
+   u8 zero_terminated = 0;
+   if (!FsstUtils::deserialize(b, zero_terminated)) {
+      fprintf(stderr, "Failed to read zero_terminated\n");
+      return false;
+   }
+   zeroTerminated = zero_terminated;
+
+   // shortCodes
+   u32 shortCodesNum = 0;
+   if (!FsstUtils::deserialize(b, shortCodesNum)) {
+      fprintf(stderr, "Failed to read shortCodesNum\n");
+      return false;
+   }
+   if (shortCodesNum != sizeof(shortCodes)/sizeof(shortCodes[0])) {
+      fprintf(stderr, "shortCodesNum mismatched\n");
+      return false;
+   }
+   for(size_t n=0; n<shortCodesNum; n++) {
+      if (!FsstUtils::deserialize(b, shortCodes[n])) {
+         fprintf(stderr, "Failed to read shortCodes[%d]\n", (int)n);
+         return false;
+      }
+   }
+
+   // lenHisto
+   u32 lenHistoNum = 0;
+   if (!FsstUtils::deserialize(b, lenHistoNum)) {
+      fprintf(stderr, "Failed to read lenHistoNum\n");
+      return false;
+   }
+   if (lenHistoNum != sizeof(lenHisto)/sizeof(lenHisto[0])) {
+      fprintf(stderr, "lenHistoNum mismatched\n");
+      return false;
+   }
+   for(size_t n=0; n<lenHistoNum; n++) {
+      if (!FsstUtils::deserialize(b, lenHisto[n])) {
+         fprintf(stderr, "Failed to read lenHisto[%d]\n", (int)n);
+         return false;
+      }
+   }
+
+   // hashTab
+   u32 hashTableNum = 0;
+   if (!FsstUtils::deserialize(b, hashTableNum)) {
+      fprintf(stderr, "Failed to read hashTableNum\n");
+      return false;
+   }
+   if (hashTableNum > sizeof(hashTab)/sizeof(hashTab[0])) {
+      fprintf(stderr, "hashTableNum mismatched\n");
+      return false;
+   }
+   for(u32 n=0; n<hashTableNum; n++) {
+      u32 hashIdx;
+      if (!FsstUtils::deserialize(b, hashIdx)) {
+         fprintf(stderr, "Failed to read hashIdx, n=%d\n", n);
+         return false;
+      }
+      if (hashIdx >= sizeof(hashTab)/sizeof(hashTab[0])) {
+         fprintf(stderr, "hashIdx out of range\n");
+         return false;
+      }
+      if (!hashTab[hashIdx].deserialize(b)) {
+         fprintf(stderr, "Failed to read hashTab[%d]\n", hashIdx);
+      }
+   }
+
+   // symbols
+   u32 symbolNum = 0;
+   if (!FsstUtils::deserialize(b, symbolNum)) {
+      fprintf(stderr, "Failed to read symbolNum\n");
+      return false;
+   }
+   if (symbolNum != FSST_CODE_BASE + nSymbols) {
+      fprintf(stderr, "symbolNum mismatched\n");
+      return false;
+   }
+   for(u32 n=0; n<symbolNum; n++) {
+      if (!symbols[n].deserialize(b)) {
+         fprintf(stderr, "Failed to read symbols[%d]\n", n);
+         return false;
+      }
+   }
+
+   return true;
 }
 
 namespace std {
@@ -638,4 +854,30 @@ extern "C" fsst_decoder_t fsst_decoder(fsst_encoder_t *encoder) {
    u32 cnt2 = fsst_import(&decoder, buf);
    assert(cnt1 == cnt2); (void) cnt1; (void) cnt2; 
    return decoder;
+}
+
+/* export hte encoder to memory buffer */
+extern "C" char *fsst_encoder_export(fsst_encoder_t *encoder, size_t *out_len) {
+   Encoder *e = (Encoder*) encoder;
+   std::string b;
+   e->symbolTable->serialize(b);
+
+   char *start = (char*) malloc(b.size());
+   *out_len = b.size();
+   memcpy(start, b.c_str(), b.size());
+   return start;
+}
+
+/* create a new fsst_encoder_t from the exported memory buffer */
+extern "C" fsst_encoder_t *fsst_encoder_import(const char* start, size_t len) {
+   Encoder *encoder = new Encoder();
+   encoder->symbolTable = std::make_shared<SymbolTable>();
+
+   std::string_view sv(start, len);
+   if (!encoder->symbolTable->deserialize(sv)) {
+      delete encoder;
+      return nullptr;
+   } else {
+      return (fsst_encoder_t*) encoder;
+   }
 }

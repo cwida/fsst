@@ -53,13 +53,13 @@ class BinarySemaphore {
    public:
    explicit BinarySemaphore(bool initialValue = false) : value(initialValue) {}
    void wait() {
-      unique_lock<mutex> lock(m);
-      while (!value) cv.wait(lock);
-      value = false;
+     unique_lock<mutex> lock(m);
+     while (!value) cv.wait(lock);
+     value = false;
    }
    void post() {
-      { unique_lock<mutex> lock(m); value = true; }
-      cv.notify_one();
+     { unique_lock<mutex> lock(m); value = true; }
+     cv.notify_one();
    }
 };
 
@@ -80,31 +80,31 @@ size_t blksz = FSST_MEMBUF-(1+FSST_MAXHEADER/2); // block size of compression (m
 
 void reader(ifstream& src) {
    for(int swap=0; true; swap = 1-swap) {
-      srcDoneCPU[swap].wait();
-      if (stopThreads) break;
-      src.read((char*) srcBuf[swap], blksz);
-      srcLen[swap] = (unsigned long) src.gcount();
-      if (decompress) {
-         if (blksz && srcLen[swap] == blksz) {
-            blksz = DESERIALIZE(srcBuf[swap]+blksz-3); // read size of next block
-            srcLen[swap] -= 3; // cut off size bytes
-         } else {
-            blksz = 0;
-         }
-      }
-      srcDoneIO[swap].post();
+     srcDoneCPU[swap].wait();
+     if (stopThreads) break;
+     src.read((char*) srcBuf[swap], blksz);
+     srcLen[swap] = (unsigned long) src.gcount();
+     if (decompress) {
+       if (blksz && srcLen[swap] == blksz) {
+         blksz = DESERIALIZE(srcBuf[swap]+blksz-3); // read size of next block
+         srcLen[swap] -= 3; // cut off size bytes
+       } else {
+         blksz = 0;
+       }
+     }
+     srcDoneIO[swap].post();
    }
 }
 
 void writer(ofstream& dst) {
    for(int swap=0; true; swap = 1-swap) {
-      dstDoneCPU[swap].wait();
-      if (!dstLen[swap]) break;
-      dst.write((char*) dstBuf[swap], dstLen[swap]);
-      dstDoneIO[swap].post();
+     dstDoneCPU[swap].wait();
+     if (!dstLen[swap]) break;
+     dst.write((char*) dstBuf[swap], dstLen[swap]);
+     dstDoneIO[swap].post();
    }
    for(int swap=0; swap<2; swap++)
-      dstDoneIO[swap].post();
+     dstDoneIO[swap].post();
 }
 
 }
@@ -112,17 +112,17 @@ void writer(ofstream& dst) {
 int main(int argc, char* argv[]) {
    size_t srcTot = 0, dstTot = 0;
    if (argc < 2 || argc > 4 || (argc == 4 && (argv[1][0] != '-' || argv[1][1] != 'd' || argv[1][2]))) {
-      cerr << "usage: " << argv[0] << " -d infile outfile" << endl;
-      cerr << "       " << argv[0] << " infile outfile" << endl;
-      cerr << "       " << argv[0] << " infile" << endl;
-      return -1;
+     cerr << "usage: " << argv[0] << " -d infile outfile" << endl;
+     cerr << "      " << argv[0] << " infile outfile" << endl;
+     cerr << "      " << argv[0] << " infile" << endl;
+     return -1;
    }
    decompress = (argc == 4);
    string srcfile(argv[1+decompress]), dstfile;
    if (argc == 2) {
-      dstfile = srcfile + ".fsst";
+     dstfile = srcfile + ".fsst";
    } else {
-      dstfile = argv[2+decompress];
+     dstfile = argv[2+decompress];
    }
    ifstream src;
    ofstream dst;
@@ -132,13 +132,13 @@ int main(int argc, char* argv[]) {
    dst.exceptions(ios_base::badbit);
    src.exceptions(ios_base::badbit);
    if (decompress) {
-       unsigned char tmp[3];
-       src.read((char*) tmp, 3);
-       if (src.gcount() != 3) {
-          cerr << "failed to open input." << endl;
-          return -1;
-       }
-       blksz = DESERIALIZE(tmp); // read first block size
+      unsigned char tmp[3];
+      src.read((char*) tmp, 3);
+      if (src.gcount() != 3) {
+        cerr << "failed to open input." << endl;
+        return -1;
+      }
+      blksz = DESERIALIZE(tmp); // read first block size
    }
    vector<unsigned char> buffer(FSST_MEMBUF*6);
    srcBuf[0] = buffer.data();
@@ -147,49 +147,49 @@ int main(int argc, char* argv[]) {
    dstMem[1] = dstMem[0] + (FSST_MEMBUF*(2ULL-decompress));
 
    for(int swap=0; swap<2; swap++) {
-      srcDoneCPU[swap].post(); // input buffer is not being processed initially
-      dstDoneIO[swap].post();  // output buffer is not being written initially
+     srcDoneCPU[swap].post(); // input buffer is not being processed initially
+     dstDoneIO[swap].post();  // output buffer is not being written initially
    }
    thread readerThread([&src]{ reader(src); });
    thread writerThread([&dst]{ writer(dst); });
 
    for(int swap=0; true; swap = 1-swap) {
-      srcDoneIO[swap].wait(); // wait until input buffer is available (i.e. done reading)
-      dstDoneIO[swap].wait(); // wait until output buffer is ready writing hence free for use
-      if (srcLen[swap] == 0) {
-         dstLen[swap] = 0;
-         break;
-      }
-      if (decompress) {
-          fsst_decoder_t decoder;
-          size_t hdr = fsst_import(&decoder, srcBuf[swap]);
-          dstLen[swap] = fsst_decompress(&decoder, srcLen[swap] - hdr, srcBuf[swap] + hdr, FSST_MEMBUF, dstBuf[swap] = dstMem[swap]);
-      } else {
-         unsigned char tmp[FSST_MAXHEADER];
-         fsst_encoder_t* encoder = fsst_create(1, &srcLen[swap], const_cast<const unsigned char **>(&srcBuf[swap]), 0);
-         size_t hdr = fsst_export(encoder, tmp);
-         if (fsst_compress(encoder, 1, &srcLen[swap], const_cast<const unsigned char **>(&srcBuf[swap]),
-                           FSST_MEMBUF * 2, dstMem[swap] + FSST_MAXHEADER + 3,
-                           &dstLen[swap], &dstBuf[swap]) < 1)
-            return -1;
-         dstLen[swap] += 3 + hdr;
-          dstBuf[swap] -= 3 + hdr;
-          SERIALIZE(dstLen[swap],dstBuf[swap]); // block starts with size
-          copy(tmp, tmp+hdr, dstBuf[swap]+3); // then the header (followed by the compressed bytes which are already there)
-          fsst_destroy(encoder);
-      }
-      srcTot += srcLen[swap];
-      dstTot += dstLen[swap];
-      srcDoneCPU[swap].post(); // input buffer may be re-used by the reader for the next block
-      dstDoneCPU[swap].post(); // output buffer is ready for writing out
+     srcDoneIO[swap].wait(); // wait until input buffer is available (i.e. done reading)
+     dstDoneIO[swap].wait(); // wait until output buffer is ready writing hence free for use
+     if (srcLen[swap] == 0) {
+       dstLen[swap] = 0;
+       break;
+     }
+     if (decompress) {
+        fsst_decoder_t decoder;
+        size_t hdr = fsst_import(&decoder, srcBuf[swap]);
+        dstLen[swap] = fsst_decompress(&decoder, srcLen[swap] - hdr, srcBuf[swap] + hdr, FSST_MEMBUF, dstBuf[swap] = dstMem[swap]);
+     } else {
+       unsigned char tmp[FSST_MAXHEADER];
+       fsst_encoder_t* encoder = fsst_create(1, &srcLen[swap], const_cast<const unsigned char **>(&srcBuf[swap]), 0);
+       size_t hdr = fsst_export(encoder, tmp);
+       if (fsst_compress(encoder, 1, &srcLen[swap], const_cast<const unsigned char **>(&srcBuf[swap]),
+                     FSST_MEMBUF * 2, dstMem[swap] + FSST_MAXHEADER + 3,
+                     &dstLen[swap], &dstBuf[swap]) < 1)
+         return -1;
+       dstLen[swap] += 3 + hdr;
+        dstBuf[swap] -= 3 + hdr;
+        SERIALIZE(dstLen[swap],dstBuf[swap]); // block starts with size
+        copy(tmp, tmp+hdr, dstBuf[swap]+3); // then the header (followed by the compressed bytes which are already there)
+        fsst_destroy(encoder);
+     }
+     srcTot += srcLen[swap];
+     dstTot += dstLen[swap];
+     srcDoneCPU[swap].post(); // input buffer may be re-used by the reader for the next block
+     dstDoneCPU[swap].post(); // output buffer is ready for writing out
    }
    cerr  << (decompress?"Dec":"C") << "ompressed " << srcTot <<  " bytes into " << dstTot << " bytes ==> " << (int) ((100*dstTot)/srcTot) << "%" << endl;
 
    // force wait until all background writes finished
    stopThreads = true;
    for(int swap=0; swap<2; swap++) {
-      srcDoneCPU[swap].post();
-      dstDoneCPU[swap].post();
+     srcDoneCPU[swap].post();
+     dstDoneCPU[swap].post();
    }
    dstDoneIO[0].wait();
    dstDoneIO[1].wait();

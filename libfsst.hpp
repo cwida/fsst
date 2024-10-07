@@ -56,12 +56,14 @@ typedef uint64_t u64;
 #define FSST_CODE_MAX       (1UL<<FSST_CODE_BITS) /* all bits set: indicating a symbol that has not been assigned a code yet */
 #define FSST_CODE_MASK      (FSST_CODE_MAX-1UL)   /* all bits set: indicating a symbol that has not been assigned a code yet */
 
+
 inline uint64_t fsst_unaligned_load(u8 const* V) {
     uint64_t Ret;
     memcpy(&Ret, V, sizeof(uint64_t)); // compiler will generate efficient code (unaligned load, where possible)
     return Ret;
 }
 
+namespace libfsst {
 struct Symbol {
    static const unsigned maxLength = 8;
 
@@ -448,3 +450,4 @@ fsst_compressAVX512(
 // C++ fsst-compress function with some more control of how the compression happens (algorithm flavor, simd unroll degree)
 size_t compressImpl(Encoder *encoder, size_t n, size_t lenIn[], u8 *strIn[], size_t size, u8 * output, size_t *lenOut, u8 *strOut[], bool noSuffixOpt, bool avoidBranch, int simd);
 size_t compressAuto(Encoder *encoder, size_t n, size_t lenIn[], u8 *strIn[], size_t size, u8 * output, size_t *lenOut, u8 *strOut[], int simd);
+}

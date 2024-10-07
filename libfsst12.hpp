@@ -51,7 +51,9 @@ typedef uint64_t u64;
 // "symbols" are character sequences (up to 8 bytes)
 // A symbol is compressed into a "code" of, 1.5 bytes (12 bits)
 #define FSST_CODE_MAX 4096
-#define FSST_CODE_MASK      ((u16) (FSST_CODE_MAX-1)) 
+#define FSST_CODE_MASK      ((u16) (FSST_CODE_MAX-1))
+
+namespace libfsst {
 
 inline uint64_t fsst_unaligned_load(u8 const* V) {
     uint64_t Ret;
@@ -308,3 +310,4 @@ struct Encoder {
 // C++ fsst-compress function with some more control of how the compression happens (algorithm flavor, simd unroll degree)
 ulong compressImpl(Encoder *encoder, ulong n, ulong lenIn[], u8 *strIn[], ulong size, u8 * output, ulong *lenOut, u8 *strOut[], bool noSuffixOpt, bool avoidBranch, int simd);
 ulong compressAuto(Encoder *encoder, ulong n, ulong lenIn[], u8 *strIn[], ulong size, u8 * output, ulong *lenOut, u8 *strOut[], int simd);
+}

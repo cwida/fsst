@@ -116,7 +116,7 @@ fsst_destroy(fsst_encoder_t*);
 unsigned int                /* OUT: number of bytes consumed in buf (0 on failure). */
 fsst_import(
    fsst_decoder_t *decoder, /* IN: this symbol table will be overwritten. */ 
-   unsigned char *buf       /* OUT: pointer to a byte-buffer where fsst_export() serialized this symbol table. */
+   unsigned char const *buf /* IN: pointer to a byte-buffer where fsst_export() serialized this symbol table. */
 ); 
 
 /* Return a decoder structure from an encoder. */

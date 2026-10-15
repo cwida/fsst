@@ -134,6 +134,7 @@ int main(int argc, char* argv[]) {
    if (decompress) {
        unsigned char tmp[3];
        src.read((char*) tmp, 3);
+       if (src.gcount() == 0 && src.eof()) return 0; // an empty sequence of blocks represents empty input
        if (src.gcount() != 3) {
           cerr << "failed to open input." << endl;
           return -1;
@@ -183,7 +184,7 @@ int main(int argc, char* argv[]) {
       srcDoneCPU[swap].post(); // input buffer may be re-used by the reader for the next block
       dstDoneCPU[swap].post(); // output buffer is ready for writing out
    }
-   cerr  << (decompress?"Dec":"C") << "ompressed " << srcTot <<  " bytes into " << dstTot << " bytes ==> " << (int) ((100*dstTot)/srcTot) << "%" << endl;
+   cerr  << (decompress?"Dec":"C") << "ompressed " << srcTot <<  " bytes into " << dstTot << " bytes ==> " << (srcTot ? (int) ((100*dstTot)/srcTot) : 0) << "%" << endl;
 
    // force wait until all background writes finished
    stopThreads = true;

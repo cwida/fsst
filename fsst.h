@@ -65,7 +65,8 @@ static inline int __builtin_ctzl(unsigned long long x) {
 #include <cstring>
 extern "C" {
 #else
-#define FSST_FALLTHROUGH 
+#define FSST_FALLTHROUGH
+#include <string.h>
 #endif
 
 #include <stddef.h>
@@ -140,6 +141,9 @@ fsst_compress(
 );
 
 /* Decompress a single string, inlined for speed. */
+#ifndef __cplusplus
+static
+#endif
 inline size_t /* OUT: bytesize of the decompressed string. If > size, the decoded output is truncated to size. */
 fsst_decompress(
    const fsst_decoder_t *decoder,  /* IN: use this symbol table for compression. */

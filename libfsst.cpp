@@ -60,7 +60,6 @@ std::ostream& operator<<(std::ostream& out, const Symbol& s) {
 }
 
 SymbolTable *buildSymbolTable(vector<const u8*> line, const size_t len[], bool zeroTerminated=false) {
-   unique_ptr<Counters> counters(new Counters); // temporary construction state
    SymbolTable *st = new SymbolTable(), *bestTable = new SymbolTable();
    int bestGain = (int) -FSST_SAMPLEMAXSZ; // worst case (everything exception)
    size_t sampleFrac = 128;
@@ -90,7 +89,9 @@ SymbolTable *buildSymbolTable(vector<const u8*> line, const size_t len[], bool z
    auto rnd128 = [&](size_t i) { return 1 + (FSST_HASH((i+1UL)*sampleFrac)&127); };
 
    // compress sample, and compute (pair-)frequencies
-   auto compressCount = [&](SymbolTable *st, Counters &counters) { // returns gain
+   auto compressCount = [&](SymbolTable *st, Counters &counters, bool &countersClear) { // returns gain
+      if (!countersClear) memset(&counters, 0, sizeof(Counters));
+      countersClear = false;
       int gain = 0;
 
       for(size_t i=0; i<line.size(); i++) {
@@ -221,14 +222,15 @@ SymbolTable *buildSymbolTable(vector<const u8*> line, const size_t len[], bool z
    };
 
    u8 bestCounters[512*sizeof(u16)];
+   auto counters = std::make_unique<Counters>(); // temporary construction state
+   bool countersClear = true;
 #ifdef NONOPT_FSST
    for(size_t frac : {127, 127, 127, 127, 127, 127, 127, 127, 127, 128}) {
       sampleFrac = frac;
 #else
    for(sampleFrac=8; true; sampleFrac += 30) {
 #endif
-      memset(counters.get(), 0, sizeof(Counters));
-      long gain = compressCount(st, *counters);
+      long gain = compressCount(st, *counters, countersClear);
       if (gain >= bestGain) { // a new best solution!
          counters->backup1(bestCounters);
          *bestTable = *st; bestGain = gain;
@@ -566,10 +568,8 @@ extern "C" u32 fsst_import(fsst_decoder_t *decoder, u8 const *buf) {
    version = swap64_if_be(version); // version is always little-endian encoded
 
    if ((version>>32) != FSST_VERSION) return 0;
+   decoder->zeroTerminated = buf[8]&1;
    memcpy(lenHisto, buf+9, 8);
-   u32 symbolCount = accumulate(lenHisto, lenHisto+8, 0U);
-   if (buf[8] > 1 || symbolCount > 255 || (buf[8] && !lenHisto[0])) return 0;
-   decoder->zeroTerminated = buf[8];
 
    // in case of zero-terminated, first symbol is "" (zero always, may be overwritten) 
    decoder->len[0] = 1;

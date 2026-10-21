@@ -63,7 +63,6 @@ std::ostream& operator<<(std::ostream& out, const Symbol& s) {
 #define FSST_SAMPLEMAXSZ ((long) 2*FSST_SAMPLETARGET) 
 
 SymbolMap *buildSymbolMap(long sampleParam, vector<ulong>& sample, const ulong len[], const u8* line[]) {
-   unique_ptr<Counters> counters(new Counters); // temporary construction state
    ulong sampleSize = max(sampleParam, FSST_SAMPLEMAXSZ); // if sampleParam is negative, we need to ignore part of the last line
    SymbolMap *st = new SymbolMap(), *bestMap = new SymbolMap();
    long bestGain = -sampleSize; // worst case (everything exception)
@@ -79,7 +78,9 @@ SymbolMap *buildSymbolMap(long sampleParam, vector<ulong>& sample, const ulong l
    auto rnd128 = [&](ulong i) { return 1 + (FSST_HASH((i+1)*sampleFrac)&127); };
 
    // compress sample, and compute (pair-)frequencies
-   auto compressCount = [&](SymbolMap *st, Counters &counters) { // returns gain
+   auto compressCount = [&](SymbolMap *st, Counters &counters, bool &countersClear) { // returns gain
+      if (!countersClear) memset(&counters, 0, sizeof(Counters));
+      countersClear = false;
       long gain = 0;
 
       for(ulong i=0; i<sample.size(); i++) {
@@ -191,14 +192,15 @@ SymbolMap *buildSymbolMap(long sampleParam, vector<ulong>& sample, const ulong l
       }
    };
 
+   auto counters = std::make_unique<Counters>(); // temporary construction state
+   bool countersClear = true;
 #ifdef NONOPT_FSST
    for(ulong frac : {127, 127, 127, 127, 127, 127, 127, 127, 127, 128}) {
       sampleFrac = frac;
 #else
    for(sampleFrac=14; true; sampleFrac = sampleFrac + 38) {
 #endif
-      memset(counters.get(), 0, sizeof(Counters));
-      long gain = compressCount(st, *counters);
+      long gain = compressCount(st, *counters, countersClear);
       if (gain >= bestGain) { // a new best solution!
          *bestMap = *st; bestGain = gain;
       } 
@@ -366,15 +368,10 @@ extern "C" u32 fsst_import(fsst_decoder_t *decoder, u8 *buf) {
    memcpy(lenHisto, buf+8, 16);
 
    for(u32 i=0; i<8; i++) 
-     symbolCount += lenHisto[i];
-   if (symbolCount > FSST_CODE_MAX) return 0;
+     symbolCount += lenHisto[i]; 
 
    for(u32 i = 0; i < symbolCount; i++) {
-      u32 len = buf[pos++];
-      if (!len || len > Symbol::maxLength || !lenHisto[len-1]) return 0;
-      lenHisto[len-1]--;
-      decoder->len[i] = len;
-      decoder->symbol[i] = 0;
+      u32 len = decoder->len[i] = buf[pos++];
       memcpy(&decoder->symbol[i], buf+pos, len);
       pos += len;
    }

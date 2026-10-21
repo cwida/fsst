@@ -94,8 +94,7 @@ fsst_export(
 void
 fsst_destroy(fsst_encoder_t*);
 
-/* Return a decoder structure from serialized format (typically used in a block-, file- or row-group header).
- * The caller must supply a complete header: this API has no input-length parameter and cannot detect truncated buffers. */
+/* Return a decoder structure from serialized format (typically used in a block-, file- or row-group header). */
 unsigned int                /* OUT: number of bytes consumed in buf (0 on failure). */
 fsst_import(
    fsst_decoder_t *decoder,  /* IN: this dictionary will be overwritten. */ 

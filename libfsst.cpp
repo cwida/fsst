@@ -16,6 +16,7 @@
 //
 // You can contact the authors via the FSST source repository : https://github.com/cwida/fsst
 #include "libfsst.hpp"
+#include <utility>
 
 namespace libfsst {
 Symbol concat(Symbol a, Symbol b) {
@@ -59,7 +60,7 @@ std::ostream& operator<<(std::ostream& out, const Symbol& s) {
    return out;
 }
 
-SymbolTable *buildSymbolTable(Counters& counters, vector<const u8*> line, const size_t len[], bool zeroTerminated=false) {
+SymbolTable *buildSymbolTable(vector<const u8*> line, const size_t len[], bool zeroTerminated=false) {
    SymbolTable *st = new SymbolTable(), *bestTable = new SymbolTable();
    int bestGain = (int) -FSST_SAMPLEMAXSZ; // worst case (everything exception)
    size_t sampleFrac = 128;
@@ -89,7 +90,9 @@ SymbolTable *buildSymbolTable(Counters& counters, vector<const u8*> line, const 
    auto rnd128 = [&](size_t i) { return 1 + (FSST_HASH((i+1UL)*sampleFrac)&127); };
 
    // compress sample, and compute (pair-)frequencies
-   auto compressCount = [&](SymbolTable *st, Counters &counters) { // returns gain
+   auto compressCount = [&](SymbolTable *st, Counters &counters, bool &countersClear) { // returns gain
+      if (!countersClear) memset(&counters, 0, sizeof(Counters));
+      countersClear = false;
       int gain = 0;
 
       for(size_t i=0; i<line.size(); i++) {
@@ -220,24 +223,25 @@ SymbolTable *buildSymbolTable(Counters& counters, vector<const u8*> line, const 
    };
 
    u8 bestCounters[512*sizeof(u16)];
+   auto counters = std::make_unique<Counters>(); // temporary construction state
+   bool countersClear = true;
 #ifdef NONOPT_FSST
    for(size_t frac : {127, 127, 127, 127, 127, 127, 127, 127, 127, 128}) {
       sampleFrac = frac;
 #else
    for(sampleFrac=8; true; sampleFrac += 30) {
 #endif
-      memset(&counters, 0, sizeof(Counters));
-      long gain = compressCount(st, counters);
+      long gain = compressCount(st, *counters, countersClear);
       if (gain >= bestGain) { // a new best solution!
-         counters.backup1(bestCounters);
+         counters->backup1(bestCounters);
          *bestTable = *st; bestGain = gain;
       } 
       if (sampleFrac >= 128) break; // we do 5 rounds (sampleFrac=8,38,68,98,128)
-      makeTable(st, counters);
+      makeTable(st, *counters);
    }
    delete st;
-   counters.restore1(bestCounters);
-   makeTable(bestTable, counters);
+   counters->restore1(bestCounters);
+   makeTable(bestTable, *counters);
    bestTable->finalize(zeroTerminated); // renumber codes for more efficient compression
    return bestTable;
 }
@@ -499,8 +503,9 @@ extern "C" fsst_encoder_t* fsst_create(size_t n, const size_t lenIn[], const u8 
    u8* sampleBuf = new u8[FSST_SAMPLEMAXSZ];
    const size_t *sampleLen = lenIn;
    vector<const u8*> sample = makeSample(sampleBuf, strIn, &sampleLen, n?n:1); // careful handling of input to get a right-size and representative sample
+   auto symbolTable = shared_ptr<SymbolTable>(buildSymbolTable(sample, sampleLen, zeroTerminated));
    Encoder *encoder = new Encoder();
-   encoder->symbolTable = shared_ptr<SymbolTable>(buildSymbolTable(encoder->counters, sample, sampleLen, zeroTerminated));
+   encoder->symbolTable = std::move(symbolTable);
    if (sampleLen != lenIn) delete[] sampleLen; 
    delete[] sampleBuf; 
    return (fsst_encoder_t*) encoder;

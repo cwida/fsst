@@ -301,12 +301,9 @@ struct Counters {
 }; 
 #endif
 
-// an encoder is a symbolmap plus some bufferspace, needed during map construction as well as compression 
+// an encoder holds a shared symbol map used during compression
 struct Encoder {
    shared_ptr<SymbolMap> symbolMap; // symbols, plus metadata and data structures for quick compression (shortCode,hashTab, etc)
-   union {
-      Counters counters;     // for counting symbol occurences during map construction
-   };
 };
 
 // C++ fsst-compress function with some more control of how the compression happens (algorithm flavor, simd unroll degree)

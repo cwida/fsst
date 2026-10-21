@@ -122,7 +122,7 @@ fsst_compress(
 );
 
 /* Loads two codes out of the first 24 bits of the 32-bit value and writes their symbols to the output buffer. */
-inline void write_two_codes_aligned(const unsigned char *__restrict__ len, unsigned long*__restrict__ symbol,
+inline void write_two_codes_aligned(const unsigned char *__restrict__ len, unsigned long long*__restrict__ symbol,
                             unsigned char *__restrict__ strOut, unsigned long &posOut, const unsigned long size,
                             const unsigned int code) {
    const unsigned int code0 = code & 4095;
@@ -135,7 +135,7 @@ inline void write_two_codes_aligned(const unsigned char *__restrict__ len, unsig
 }
 
 /* Loads one code out of the first 12 bits of the 16-bit value and writes its symbol to the output buffer. */
-inline void write_one_code_aligned(const unsigned char *__restrict__ len, unsigned long*__restrict__ symbol,
+inline void write_one_code_aligned(const unsigned char *__restrict__ len, unsigned long long*__restrict__ symbol,
                                unsigned char *__restrict__ strOut, unsigned long &posOut, const unsigned long size,
                                unsigned short code) {
    code &= 4095;
@@ -187,7 +187,7 @@ fsst_decompress(
       write_one_code_aligned(len, symbol, strOut, posOut, size, code);
       posIn=lenIn;
    } else if (bytesLeft == 3) { // two codes left in 3 bytes
-      unsigned int code;
+      unsigned int code = 0;
       memcpy(&code, strIn+posIn, 3);
       write_two_codes_aligned(len, symbol, strOut, posOut, size, code);
       posIn=lenIn;

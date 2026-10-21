@@ -18,6 +18,7 @@
 #include "libfsst12.hpp"
 #include <math.h>
 #include <string.h>
+#include <utility>
 
 namespace libfsst {
 Symbol concat(Symbol a, Symbol b) {
@@ -62,7 +63,7 @@ std::ostream& operator<<(std::ostream& out, const Symbol& s) {
 #define FSST_SAMPLETARGET (1<<17) 
 #define FSST_SAMPLEMAXSZ ((long) 2*FSST_SAMPLETARGET) 
 
-SymbolMap *buildSymbolMap(Counters& counters, long sampleParam, vector<ulong>& sample, const ulong len[], const u8* line[]) {
+SymbolMap *buildSymbolMap(long sampleParam, vector<ulong>& sample, const ulong len[], const u8* line[]) {
    ulong sampleSize = max(sampleParam, FSST_SAMPLEMAXSZ); // if sampleParam is negative, we need to ignore part of the last line
    SymbolMap *st = new SymbolMap(), *bestMap = new SymbolMap();
    long bestGain = -sampleSize; // worst case (everything exception)
@@ -78,7 +79,9 @@ SymbolMap *buildSymbolMap(Counters& counters, long sampleParam, vector<ulong>& s
    auto rnd128 = [&](ulong i) { return 1 + (FSST_HASH((i+1)*sampleFrac)&127); };
 
    // compress sample, and compute (pair-)frequencies
-   auto compressCount = [&](SymbolMap *st, Counters &counters) { // returns gain
+   auto compressCount = [&](SymbolMap *st, Counters &counters, bool &countersClear) { // returns gain
+      if (!countersClear) memset(&counters, 0, sizeof(Counters));
+      countersClear = false;
       long gain = 0;
 
       for(ulong i=0; i<sample.size(); i++) {
@@ -190,19 +193,20 @@ SymbolMap *buildSymbolMap(Counters& counters, long sampleParam, vector<ulong>& s
       }
    };
 
+   auto counters = std::make_unique<Counters>(); // temporary construction state
+   bool countersClear = true;
 #ifdef NONOPT_FSST
    for(ulong frac : {127, 127, 127, 127, 127, 127, 127, 127, 127, 128}) {
       sampleFrac = frac;
 #else
    for(sampleFrac=14; true; sampleFrac = sampleFrac + 38) {
 #endif
-      memset(&counters, 0, sizeof(Counters));
-      long gain = compressCount(st, counters);
+      long gain = compressCount(st, *counters, countersClear);
       if (gain >= bestGain) { // a new best solution!
          *bestMap = *st; bestGain = gain;
       } 
       if (sampleFrac >= 128) break; // we do 4 rounds (sampleFrac=14,52,90,128)
-      makeMap(st, counters);
+      makeMap(st, *counters);
    }
    delete st;
    return bestMap;
@@ -306,8 +310,9 @@ extern "C" fsst_encoder_t* fsst_create(ulong n, const ulong lenIn[], const u8 *s
    vector<ulong> sample;
    (void) dummy;
    long sampleSize = makeSample(sample, n?n:1, lenIn); // careful handling of input to get a right-size and representative sample
+   auto symbolMap = shared_ptr<SymbolMap>(buildSymbolMap(sampleSize, sample, lenIn, strIn));
    Encoder *encoder = new Encoder();
-   encoder->symbolMap = shared_ptr<SymbolMap>(buildSymbolMap(encoder->counters, sampleSize, sample, lenIn, strIn));
+   encoder->symbolMap = std::move(symbolMap);
    return (fsst_encoder_t*) encoder;
 }
 
@@ -369,9 +374,8 @@ extern "C" u32 fsst_import(fsst_decoder_t *decoder, u8 *buf) {
 
    for(u32 i = 0; i < symbolCount; i++) {
       u32 len = decoder->len[i] = buf[pos++];
-      for(u32 j = 0; j < len; j++) {
-        ((u8*) &decoder->symbol[i])[j] = buf[pos++];
-      }
+      memcpy(&decoder->symbol[i], buf+pos, len);
+      pos += len;
    }
    // fill unused symbols with text "corrupt". Gives a chance to detect corrupted code sequences (if there are unused symbols).
    while(symbolCount<4096) {

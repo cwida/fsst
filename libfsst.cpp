@@ -59,7 +59,8 @@ std::ostream& operator<<(std::ostream& out, const Symbol& s) {
    return out;
 }
 
-SymbolTable *buildSymbolTable(Counters& counters, vector<const u8*> line, const size_t len[], bool zeroTerminated=false) {
+SymbolTable *buildSymbolTable(vector<const u8*> line, const size_t len[], bool zeroTerminated=false) {
+   unique_ptr<Counters> counters(new Counters); // temporary construction state
    SymbolTable *st = new SymbolTable(), *bestTable = new SymbolTable();
    int bestGain = (int) -FSST_SAMPLEMAXSZ; // worst case (everything exception)
    size_t sampleFrac = 128;
@@ -226,18 +227,18 @@ SymbolTable *buildSymbolTable(Counters& counters, vector<const u8*> line, const 
 #else
    for(sampleFrac=8; true; sampleFrac += 30) {
 #endif
-      memset(&counters, 0, sizeof(Counters));
-      long gain = compressCount(st, counters);
+      memset(counters.get(), 0, sizeof(Counters));
+      long gain = compressCount(st, *counters);
       if (gain >= bestGain) { // a new best solution!
-         counters.backup1(bestCounters);
+         counters->backup1(bestCounters);
          *bestTable = *st; bestGain = gain;
       } 
       if (sampleFrac >= 128) break; // we do 5 rounds (sampleFrac=8,38,68,98,128)
-      makeTable(st, counters);
+      makeTable(st, *counters);
    }
    delete st;
-   counters.restore1(bestCounters);
-   makeTable(bestTable, counters);
+   counters->restore1(bestCounters);
+   makeTable(bestTable, *counters);
    bestTable->finalize(zeroTerminated); // renumber codes for more efficient compression
    return bestTable;
 }
@@ -500,7 +501,7 @@ extern "C" fsst_encoder_t* fsst_create(size_t n, const size_t lenIn[], const u8 
    const size_t *sampleLen = lenIn;
    vector<const u8*> sample = makeSample(sampleBuf, strIn, &sampleLen, n?n:1); // careful handling of input to get a right-size and representative sample
    Encoder *encoder = new Encoder();
-   encoder->symbolTable = shared_ptr<SymbolTable>(buildSymbolTable(encoder->counters, sample, sampleLen, zeroTerminated));
+   encoder->symbolTable = shared_ptr<SymbolTable>(buildSymbolTable(sample, sampleLen, zeroTerminated));
    if (sampleLen != lenIn) delete[] sampleLen; 
    delete[] sampleBuf; 
    return (fsst_encoder_t*) encoder;
@@ -565,8 +566,10 @@ extern "C" u32 fsst_import(fsst_decoder_t *decoder, u8 const *buf) {
    version = swap64_if_be(version); // version is always little-endian encoded
 
    if ((version>>32) != FSST_VERSION) return 0;
-   decoder->zeroTerminated = buf[8]&1;
    memcpy(lenHisto, buf+9, 8);
+   u32 symbolCount = accumulate(lenHisto, lenHisto+8, 0U);
+   if (buf[8] > 1 || symbolCount > 255 || (buf[8] && !lenHisto[0])) return 0;
+   decoder->zeroTerminated = buf[8];
 
    // in case of zero-terminated, first symbol is "" (zero always, may be overwritten) 
    decoder->len[0] = 1;

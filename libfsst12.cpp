@@ -62,7 +62,8 @@ std::ostream& operator<<(std::ostream& out, const Symbol& s) {
 #define FSST_SAMPLETARGET (1<<17) 
 #define FSST_SAMPLEMAXSZ ((long) 2*FSST_SAMPLETARGET) 
 
-SymbolMap *buildSymbolMap(Counters& counters, long sampleParam, vector<ulong>& sample, const ulong len[], const u8* line[]) {
+SymbolMap *buildSymbolMap(long sampleParam, vector<ulong>& sample, const ulong len[], const u8* line[]) {
+   unique_ptr<Counters> counters(new Counters); // temporary construction state
    ulong sampleSize = max(sampleParam, FSST_SAMPLEMAXSZ); // if sampleParam is negative, we need to ignore part of the last line
    SymbolMap *st = new SymbolMap(), *bestMap = new SymbolMap();
    long bestGain = -sampleSize; // worst case (everything exception)
@@ -196,13 +197,13 @@ SymbolMap *buildSymbolMap(Counters& counters, long sampleParam, vector<ulong>& s
 #else
    for(sampleFrac=14; true; sampleFrac = sampleFrac + 38) {
 #endif
-      memset(&counters, 0, sizeof(Counters));
-      long gain = compressCount(st, counters);
+      memset(counters.get(), 0, sizeof(Counters));
+      long gain = compressCount(st, *counters);
       if (gain >= bestGain) { // a new best solution!
          *bestMap = *st; bestGain = gain;
       } 
       if (sampleFrac >= 128) break; // we do 4 rounds (sampleFrac=14,52,90,128)
-      makeMap(st, counters);
+      makeMap(st, *counters);
    }
    delete st;
    return bestMap;
@@ -307,7 +308,7 @@ extern "C" fsst_encoder_t* fsst_create(ulong n, const ulong lenIn[], const u8 *s
    (void) dummy;
    long sampleSize = makeSample(sample, n?n:1, lenIn); // careful handling of input to get a right-size and representative sample
    Encoder *encoder = new Encoder();
-   encoder->symbolMap = shared_ptr<SymbolMap>(buildSymbolMap(encoder->counters, sampleSize, sample, lenIn, strIn));
+   encoder->symbolMap = shared_ptr<SymbolMap>(buildSymbolMap(sampleSize, sample, lenIn, strIn));
    return (fsst_encoder_t*) encoder;
 }
 
@@ -365,13 +366,17 @@ extern "C" u32 fsst_import(fsst_decoder_t *decoder, u8 *buf) {
    memcpy(lenHisto, buf+8, 16);
 
    for(u32 i=0; i<8; i++) 
-     symbolCount += lenHisto[i]; 
+     symbolCount += lenHisto[i];
+   if (symbolCount > FSST_CODE_MAX) return 0;
 
    for(u32 i = 0; i < symbolCount; i++) {
-      u32 len = decoder->len[i] = buf[pos++];
-      for(u32 j = 0; j < len; j++) {
-        ((u8*) &decoder->symbol[i])[j] = buf[pos++];
-      }
+      u32 len = buf[pos++];
+      if (!len || len > Symbol::maxLength || !lenHisto[len-1]) return 0;
+      lenHisto[len-1]--;
+      decoder->len[i] = len;
+      decoder->symbol[i] = 0;
+      memcpy(&decoder->symbol[i], buf+pos, len);
+      pos += len;
    }
    // fill unused symbols with text "corrupt". Gives a chance to detect corrupted code sequences (if there are unused symbols).
    while(symbolCount<4096) {

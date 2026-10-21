@@ -16,6 +16,7 @@
 //
 // You can contact the authors via the FSST source repository : https://github.com/cwida/fsst
 #include "libfsst.hpp"
+#include <utility>
 
 namespace libfsst {
 Symbol concat(Symbol a, Symbol b) {
@@ -502,8 +503,9 @@ extern "C" fsst_encoder_t* fsst_create(size_t n, const size_t lenIn[], const u8 
    u8* sampleBuf = new u8[FSST_SAMPLEMAXSZ];
    const size_t *sampleLen = lenIn;
    vector<const u8*> sample = makeSample(sampleBuf, strIn, &sampleLen, n?n:1); // careful handling of input to get a right-size and representative sample
+   auto symbolTable = shared_ptr<SymbolTable>(buildSymbolTable(sample, sampleLen, zeroTerminated));
    Encoder *encoder = new Encoder();
-   encoder->symbolTable = shared_ptr<SymbolTable>(buildSymbolTable(sample, sampleLen, zeroTerminated));
+   encoder->symbolTable = std::move(symbolTable);
    if (sampleLen != lenIn) delete[] sampleLen; 
    delete[] sampleBuf; 
    return (fsst_encoder_t*) encoder;

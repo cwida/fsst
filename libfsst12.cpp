@@ -18,6 +18,7 @@
 #include "libfsst12.hpp"
 #include <math.h>
 #include <string.h>
+#include <utility>
 
 namespace libfsst {
 Symbol concat(Symbol a, Symbol b) {
@@ -309,8 +310,9 @@ extern "C" fsst_encoder_t* fsst_create(ulong n, const ulong lenIn[], const u8 *s
    vector<ulong> sample;
    (void) dummy;
    long sampleSize = makeSample(sample, n?n:1, lenIn); // careful handling of input to get a right-size and representative sample
+   auto symbolMap = shared_ptr<SymbolMap>(buildSymbolMap(sampleSize, sample, lenIn, strIn));
    Encoder *encoder = new Encoder();
-   encoder->symbolMap = shared_ptr<SymbolMap>(buildSymbolMap(sampleSize, sample, lenIn, strIn));
+   encoder->symbolMap = std::move(symbolMap);
    return (fsst_encoder_t*) encoder;
 }
 
